@@ -30,5 +30,6 @@ jobs:
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
           PERPLEXITY_MODEL: ${{ secrets.PERPLEXITY_MODEL }}
           WATCHLIST_SLUGS: ${{ secrets.WATCHLIST_SLUGS }}
+          WATCHLIST_FROM_DB: 'true'
           WEEKEND_RESEARCH: 'true'
         run: npm run research:watchlist

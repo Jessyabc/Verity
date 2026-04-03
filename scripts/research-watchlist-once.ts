@@ -1,5 +1,9 @@
 /**
- * Refresh research for slugs in WATCHLIST_SLUGS (comma-separated) or all pilot companies if ALL_PILOT=1.
+ * Refresh research for:
+ * - ALL_PILOT=1: all pilot companies
+ * - WATCHLIST_FROM_DB=true: distinct slugs from `user_watchlist` (falls back to WATCHLIST_SLUGS if empty)
+ * - else: WATCHLIST_SLUGS (comma-separated)
+ *
  * Respects weekend skip unless WEEKEND_RESEARCH=true (for Sat/Sun cron jobs).
  *
  * Run: npm run research:watchlist
@@ -8,6 +12,13 @@ import './load-env.ts'
 import { createClient } from '@supabase/supabase-js'
 import { getPilotCompanyBySlug, PILOT_COMPANIES } from '../src/data/pilot-universe.ts'
 import { fetchCompanyResearchFromPerplexity } from './lib/research-perplexity.ts'
+
+function parseCommaSlugs(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
 
 async function main() {
   const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL
@@ -25,25 +36,36 @@ async function main() {
     return
   }
 
+  const supabase = createClient(supabaseUrl.trim(), serviceKey.trim())
+
   let slugs: string[]
+
   if (process.env.ALL_PILOT === '1') {
     slugs = PILOT_COMPANIES.map((c) => c.slug)
+  } else if (
+    process.env.WATCHLIST_FROM_DB === '1' ||
+    process.env.WATCHLIST_FROM_DB === 'true'
+  ) {
+    const { data, error } = await supabase
+      .from('user_watchlist')
+      .select('company_slug')
+    if (error) throw error
+    slugs = [
+      ...new Set((data ?? []).map((r) => r.company_slug as string)),
+    ]
+    if (slugs.length === 0) {
+      slugs = parseCommaSlugs(process.env.WATCHLIST_SLUGS ?? '')
+    }
   } else {
-    const raw = process.env.WATCHLIST_SLUGS ?? ''
-    slugs = raw
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
+    slugs = parseCommaSlugs(process.env.WATCHLIST_SLUGS ?? '')
   }
 
   if (slugs.length === 0) {
     console.error(
-      'Set WATCHLIST_SLUGS=slug1,slug2 or ALL_PILOT=1 in .env / GitHub secrets.',
+      'Set WATCHLIST_SLUGS=slug1,slug2, ALL_PILOT=1, or WATCHLIST_FROM_DB=true (with rows in user_watchlist or WATCHLIST_SLUGS fallback).',
     )
     process.exit(1)
   }
-
-  const supabase = createClient(supabaseUrl.trim(), serviceKey.trim())
 
   for (const slug of slugs) {
     const company = getPilotCompanyBySlug(slug)

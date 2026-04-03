@@ -1,5 +1,6 @@
 # Weekday morning Perplexity refresh (Mon–Fri). Adjust cron for your timezone (UTC by default).
-# Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PERPLEXITY_API_KEY, WATCHLIST_SLUGS (comma-separated slugs)
+# Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PERPLEXITY_API_KEY.
+# Optional: WATCHLIST_SLUGS fallback when user_watchlist is empty (if using WATCHLIST_FROM_DB).
 
 name: Research watchlist (weekdays)
 
@@ -29,4 +30,5 @@ jobs:
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
           PERPLEXITY_MODEL: ${{ secrets.PERPLEXITY_MODEL }}
           WATCHLIST_SLUGS: ${{ secrets.WATCHLIST_SLUGS }}
+          WATCHLIST_FROM_DB: 'true'
         run: npm run research:watchlist

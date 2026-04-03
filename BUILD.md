@@ -56,14 +56,14 @@
 ## Phase 5 — Company research & news (Perplexity)
 
 - [x] Migration [`company_research_cache`](supabase/migrations/20260405120000_company_research_cache.sql) — cached JSON items + `fetched_at`
-- [x] Scripts: `npm run research:company -- <slug>` · `npm run research:watchlist` (needs `WATCHLIST_SLUGS` or `ALL_PILOT=1`)
+- [x] Scripts: `npm run research:company -- <slug>` · `npm run research:watchlist` (`WATCHLIST_SLUGS`, `WATCHLIST_FROM_DB=true` + `user_watchlist`, or `ALL_PILOT=1`)
 - [x] Edge Function [`supabase/functions/research-company`](supabase/functions/research-company/index.ts) — browser **Refresh** calls Perplexity with the key on the server (deploy + set secrets)
 - [x] UI: **Company profile** (research card), **Dashboard** (refresh watchlist), **Settings** (weekend preference note)
 - [x] CI: [weekdays](.github/workflows/research-weekdays.yml) Mon–Fri `08:00 UTC` · [weekends](.github/workflows/research-weekends.yml) optional (uncomment schedule + run manually)
 
 **Deploy Edge Function:** `supabase functions deploy research-company` and set secrets `PERPLEXITY_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Dashboard → Edge Functions → Secrets).
 
-**GitHub:** add `PERPLEXITY_API_KEY`, `WATCHLIST_SLUGS` (e.g. `microsoft,apple,tesla`). Adjust weekday cron UTC to match your “~8am” locally.
+**GitHub:** add `PERPLEXITY_API_KEY`. Workflows set `WATCHLIST_FROM_DB=true` so research uses distinct slugs from `user_watchlist` (synced from the app). Optional secret `WATCHLIST_SLUGS` is a fallback when no rows exist yet. Adjust weekday cron UTC to match your “~8am” locally.
 
 ## Commands
 
@@ -73,7 +73,7 @@ npm run dev
 npm run build
 npm run monitor:once        # needs SUPABASE_SERVICE_ROLE_KEY + migration applied
 npm run enrich:once         # needs OPENAI_API_KEY + enrichment migration applied
-npm run research:watchlist  # PERPLEXITY_API_KEY + WATCHLIST_SLUGS + research cache migration
+npm run research:watchlist  # PERPLEXITY_API_KEY + WATCHLIST_FROM_DB or WATCHLIST_SLUGS + research cache migration
 npm run research:company -- microsoft
 ```
 
@@ -87,5 +87,5 @@ See Phase 1; set `VITE_SUPABASE_*` in the host’s env for production auth.
 
 1. Apply [`supabase/migrations`](supabase/migrations/) to your Verity Supabase project (monitoring, enrichment, and `company_research_cache`).
 2. Copy `.env.example` → `.env.local`, add Supabase + `OPENAI_API_KEY`, then run `npm run monitor:once` and `npm run enrich:once`.
-3. Deploy [`research-company`](supabase/functions/research-company/index.ts) Edge Function; add `PERPLEXITY_API_KEY` + `WATCHLIST_SLUGS` to GitHub; enable [`research-weekdays.yml`](.github/workflows/research-weekdays.yml).
+3. Deploy [`research-company`](supabase/functions/research-company/index.ts) Edge Function; add `PERPLEXITY_API_KEY` to GitHub; apply `user_watchlist` migration so app + `WATCHLIST_FROM_DB` jobs see watchlist rows; enable [`research-weekdays.yml`](.github/workflows/research-weekdays.yml).
 4. Optional: schedule [`monitor-schedule.yml`](.github/workflows/monitor-schedule.yml) and [`enrich-once.yml`](.github/workflows/enrich-once.yml) with matching secrets.

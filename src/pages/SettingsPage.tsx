@@ -105,10 +105,12 @@ export function SettingsPage() {
         <Card>
           <h2 className="text-[15px] font-medium text-ink">Research & news (Perplexity)</h2>
           <p className="mt-1 text-[14px] text-ink-muted">
-            Scheduled refresh uses GitHub Actions + the same slugs as{' '}
-            <span className="font-mono text-[12px]">WATCHLIST_SLUGS</span> in repo secrets — weekdays
-            ~08:00 UTC by default (adjust the cron in{' '}
-            <span className="font-mono text-[12px]">research-weekdays.yml</span> for your morning).
+            Your watchlist syncs to your account (Supabase). Scheduled refresh uses GitHub Actions with{' '}
+            <span className="font-mono text-[12px]">WATCHLIST_FROM_DB</span> so CI refreshes the union of
+            everyone’s watchlist slugs (pilot companies only). Optional secret{' '}
+            <span className="font-mono text-[12px]">WATCHLIST_SLUGS</span> is a fallback when the table is
+            empty. Weekdays ~08:00 UTC by default — adjust the cron in{' '}
+            <span className="font-mono text-[12px]">research-weekdays.yml</span> for your morning.
           </p>
 
           <div className="mt-8 flex items-start justify-between gap-6">
