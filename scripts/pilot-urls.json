@@ -1,0 +1,27 @@
+{
+  "userAgent": "VerityMonitor/1.0 (+https://verity.local)",
+  "entries": [
+    {
+      "slug": "microsoft",
+      "name": "Microsoft Corporation",
+      "ticker": "MSFT",
+      "exchange": "NASDAQ",
+      "tagline": "Cloud, productivity, and AI platform company.",
+      "overview": "Pilot seed — replace with AI overview when wired.",
+      "sourceKey": "ir",
+      "sourceLabel": "Investor relations",
+      "url": "https://www.microsoft.com/en-us/investor"
+    },
+    {
+      "slug": "apple",
+      "name": "Apple Inc.",
+      "ticker": "AAPL",
+      "exchange": "NASDAQ",
+      "tagline": "Consumer electronics, software, and services.",
+      "overview": "Pilot seed — replace with AI overview when wired.",
+      "sourceKey": "ir",
+      "sourceLabel": "Investor relations",
+      "url": "https://investor.apple.com"
+    }
+  ]
+}

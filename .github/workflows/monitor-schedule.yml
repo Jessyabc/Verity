@@ -1,0 +1,29 @@
+# Runs the one-shot monitor against Supabase (robots → GET → hash → upsert).
+# Add repository secrets: SUPABASE_URL (or reuse your project URL), SUPABASE_SERVICE_ROLE_KEY.
+
+name: Monitor once
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '25 */6 * * *'
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Run monitor
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run monitor:once
