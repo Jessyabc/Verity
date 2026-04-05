@@ -107,7 +107,8 @@ function SearchTabHeader({
           <ActivityIndicator color={colors.accent} style={{ marginTop: space.md }} />
         ) : recentDocs.length === 0 ? (
           <Text style={[styles.recentHint, { color: colors.inkMuted }]}>
-            Nothing recent yet — add tickers on a company profile or on the web.
+            Nothing here yet — tracked pages show after monitor runs on company sources (IR/press URLs).
+            Add official site sources in Admin on the web if a company has none.
           </Text>
         ) : (
           recentDocs.map((item) => (

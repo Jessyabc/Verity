@@ -11,7 +11,8 @@ export async function fetchTrackedDocumentsForCompany(
       'id, company_id, company_source_id, canonical_url, content_hash, title, first_seen_at, last_checked_at, summary_text',
     )
     .eq('company_id', companyId)
-    .order('last_checked_at', { ascending: false })
+    .order('last_checked_at', { ascending: false, nullsFirst: false })
+    .order('first_seen_at', { ascending: false, nullsFirst: false })
     .limit(limit)
   if (error) throw error
   return (data ?? []) as DbTrackedDocument[]
