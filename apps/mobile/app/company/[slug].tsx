@@ -27,6 +27,7 @@ import {
 import { fetchResearchCacheRow, type CompanyResearchRow } from '@/lib/researchCache'
 import { invokeResearchCompany } from '@/lib/researchRefresh'
 import { supabase } from '@/lib/supabase'
+import { syncSessionForApi } from '@/lib/syncSessionForApi'
 import { font, radius, space } from '@/constants/theme'
 
 function safeHostname(url: string): string {
@@ -61,6 +62,7 @@ export default function CompanyScreen() {
     }
     setError(null)
     try {
+      await syncSessionForApi()
       const [bundle, r, wl] = await Promise.all([
         fetchCompanyBundleBySlug(slug),
         fetchResearchCacheRow(slug),

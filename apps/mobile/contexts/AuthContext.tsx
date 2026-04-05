@@ -12,6 +12,7 @@ import {
 
 import { applySessionFromUrl, getEmailMagicLinkRedirect } from '@/lib/authDeepLink'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
+import { registerSupabaseNativeAuthAutoRefresh } from '@/lib/supabaseNativeAutoRefresh'
 
 type AuthContextValue = {
   user: User | null
@@ -65,10 +66,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(next)
     })
 
+    const removeAutoRefresh = registerSupabaseNativeAuthAutoRefresh()
+
     return () => {
       cancelled = true
       linkSub.remove()
       subscription.unsubscribe()
+      removeAutoRefresh()
     }
   }, [])
 

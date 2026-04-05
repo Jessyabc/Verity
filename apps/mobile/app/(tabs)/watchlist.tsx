@@ -19,6 +19,7 @@ import {
   type WatchlistCompanyRow,
 } from '@/lib/watchlistApi'
 import { supabase } from '@/lib/supabase'
+import { syncSessionForApi } from '@/lib/syncSessionForApi'
 import { font, radius, space } from '@/constants/theme'
 
 export default function WatchlistScreen() {
@@ -39,6 +40,7 @@ export default function WatchlistScreen() {
     setLoading(true)
     setError(null)
     try {
+      await syncSessionForApi()
       const slugs = await fetchWatchlistSlugs(supabase)
       const companies = await fetchCompaniesForSlugs(supabase, slugs)
       setRows(companies)

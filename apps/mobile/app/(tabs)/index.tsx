@@ -23,6 +23,7 @@ import { formatAgo } from '@/lib/format'
 import type { RecentDbDoc } from '@/lib/recentDocuments'
 import { fetchRecentDocumentsForSlugs } from '@/lib/recentDocuments'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
+import { syncSessionForApi } from '@/lib/syncSessionForApi'
 import { fetchWatchlistSlugs } from '@/lib/watchlistApi'
 import { font, radius, space } from '@/constants/theme'
 
@@ -144,7 +145,7 @@ export default function HomeScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const colors = useVerityPalette()
-  const { user, signOut } = useAuth()
+  const { user, signOut, initialized } = useAuth()
   const [query, setQuery] = useState('')
   const [rows, setRows] = useState<SearchCompanyRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -175,6 +176,7 @@ export default function HomeScreen() {
     }
     setRecentLoading(true)
     try {
+      await syncSessionForApi()
       const slugs = await fetchWatchlistSlugs(supabase)
       const docs = await fetchRecentDocumentsForSlugs(slugs, 10)
       setRecentDocs(docs)
@@ -186,8 +188,9 @@ export default function HomeScreen() {
   }, [user])
 
   useEffect(() => {
+    if (!initialized || !user) return
     void runSearch('')
-  }, [runSearch])
+  }, [runSearch, initialized, user])
 
   useFocusEffect(
     useCallback(() => {
@@ -198,6 +201,7 @@ export default function HomeScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
     try {
+      await syncSessionForApi()
       await Promise.all([runSearch(query, false), loadRecent()])
     } finally {
       setRefreshing(false)
