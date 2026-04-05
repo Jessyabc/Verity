@@ -216,11 +216,11 @@ export default function CompanyScreen() {
       <View style={[styles.card, { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke }]}>
         <Text style={[styles.sectionTitle, { color: colors.ink }]}>Tracked documents</Text>
         <Text style={[styles.meta, { color: colors.inkSubtle }]}>
-          Latest from `tracked_documents` (same as web company profile).
+          Monitored filings, press releases, and investor relations documents.
         </Text>
         {documents.length === 0 ? (
           <Text style={[styles.muted, { marginTop: space.md }]}>
-            No documents yet — add monitor URLs in admin / web so monitoring can discover files.
+            No documents found yet. Check back after the next monitoring cycle.
           </Text>
         ) : (
           documents.map((doc) => (
@@ -263,7 +263,10 @@ export default function CompanyScreen() {
         <Text style={[styles.meta, { color: colors.inkSubtle }]}>
           {research
             ? `Updated ${formatAgo(research.fetched_at)}${research.model ? ` · ${research.model}` : ''}`
-            : 'No cached research yet — tap Refresh (uses your session, same as web).'}
+            : 'No cached research yet — tap Refresh to fetch the latest.'}
+        </Text>
+        <Text style={[styles.disclaimer, { color: colors.inkSubtle }]}>
+          For informational purposes only. Not investment advice.
         </Text>
         {research?.error ? (
           <Text style={[styles.warn, { color: colors.amber }]}>{research.error}</Text>
@@ -357,6 +360,7 @@ function buildStyles(colors: ReturnType<typeof useVerityPalette>) {
     refreshBtnText: { fontFamily: font.semi, fontSize: 14, color: '#fff' },
     meta: { fontFamily: font.regular, fontSize: 13, marginTop: space.sm },
     warn: { fontFamily: font.regular, fontSize: 13, marginTop: space.sm },
+    disclaimer: { fontFamily: font.regular, fontSize: 11, marginTop: space.sm, opacity: 0.6 },
     newsRow: {
       paddingVertical: space.md,
       borderTopWidth: StyleSheet.hairlineWidth,

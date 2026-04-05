@@ -73,7 +73,7 @@ export default function WatchlistScreen() {
         <Text style={[styles.kicker, { color: colors.inkSubtle }]}>WATCHLIST</Text>
         <Text style={[styles.h1, { color: colors.ink }]}>Your companies</Text>
         <Text style={[styles.lede, { color: colors.inkMuted }]}>
-          Synced with Supabase `user_watchlist` — same rows as the web app for signed-in users.
+          Your saved companies. Tap any to view documents and research, or add new ones from search.
         </Text>
       </View>
 

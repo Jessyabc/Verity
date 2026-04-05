@@ -95,8 +95,8 @@ export default function SignInScreen() {
       >
         <Text style={styles.title}>Sign in</Text>
         <Text style={styles.hint}>
-          Use email and password for simulator and TestFlight testing. Magic links need a working
-          redirect into the app (see below).
+          Sign in to monitor filings, press releases, and investor relations documents from your
+          watchlist companies.
         </Text>
 
         <TextInput
@@ -151,15 +151,15 @@ export default function SignInScreen() {
           disabled={busy}
         >
           <RNText style={styles.linkText}>
-            {showMagicLink ? '▼ Hide magic link' : '▶ Magic link (production device)'}
+            {showMagicLink ? '▼ Hide magic link option' : '▶ Sign in with magic link instead'}
           </RNText>
         </Pressable>
 
         {showMagicLink ? (
           <View style={styles.magicBox}>
             <Text style={styles.magicHint}>
-              Opens the email link in the app via verity:// — configure Supabase redirect URLs and
-              use a real device or build where the scheme works.
+              We'll send a sign-in link to your email. Tap it on this device to open the app and
+              sign in instantly — no password needed.
             </Text>
             <Pressable
               style={[styles.outlineBtn, busy && styles.buttonDisabled]}
@@ -172,9 +172,8 @@ export default function SignInScreen() {
         ) : null}
 
         <Text style={styles.small}>
-          Supabase → Authentication → Providers: keep Email enabled. Password sign-in is allowed by
-          default; disable &quot;Confirm email&quot; for fastest local testing if you want instant
-          sign-up.
+          Verity monitors official company sources only. Content is for informational purposes and
+          is not investment advice.
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
