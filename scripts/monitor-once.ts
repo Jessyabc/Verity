@@ -68,6 +68,99 @@ function pilotPairKey(slug: string, sourceKey: string): string {
   return `${slug}\0${sourceKey}`
 }
 
+const SEC_EDGAR_SOURCE_KEY = 'sec_edgar_filings'
+
+/** SEC browse-edgar HTML (stable, public); pad CIK to 10 digits. */
+function secEdgarCompanyUrl(cikDigits: string): string {
+  const d = cikDigits.replace(/\D/g, '')
+  const cik10 = d.padStart(10, '0')
+  return `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik10}&type=&dateb=&owner=exclude&count=40`
+}
+
+/**
+ * SEC ticker import creates companies with `cik` but no `company_sources` — monitor would skip them
+ * forever and `tracked_documents` stays empty. Seed one EDGAR "company filings" page per watchlisted
+ * company that still has no sources (avoids seeding the entire SEC universe on first run).
+ */
+async function seedSecEdgarSourcesWhereMissing(supabase: SupabaseClient): Promise<number> {
+  const { data: wlRows, error: wlErr } = await supabase.from('user_watchlist').select('company_slug')
+  if (wlErr) {
+    console.error('list user_watchlist', wlErr)
+    return 0
+  }
+
+  const slugs = [...new Set((wlRows ?? []).map((r) => r.company_slug as string).filter(Boolean))]
+  if (slugs.length === 0) {
+    console.log('— SEC EDGAR seed: no watchlist rows; skip (add tickers to watchlist, then re-run monitor)')
+    return 0
+  }
+
+  const { data: withCik, error: cErr } = await supabase
+    .from('companies')
+    .select('id, cik')
+    .in('slug', slugs)
+    .not('cik', 'is', null)
+
+  if (cErr) {
+    console.error('list watchlist companies with cik', cErr)
+    return 0
+  }
+
+  const rows = (withCik ?? []).filter((r) => String(r.cik ?? '').replace(/\D/g, '').length > 0)
+  if (rows.length === 0) return 0
+
+  const { data: sources, error: sErr } = await supabase.from('company_sources').select('company_id')
+  if (sErr) {
+    console.error('list company_sources', sErr)
+    return 0
+  }
+
+  const companyIdsWithAnySource = new Set((sources ?? []).map((r) => r.company_id as string))
+
+  const toSeed: {
+    company_id: string
+    source_key: string
+    label: string
+    base_url: string
+  }[] = []
+
+  for (const r of rows) {
+    const id = r.id as string
+    if (companyIdsWithAnySource.has(id)) continue
+    const cik = String(r.cik ?? '').replace(/\D/g, '')
+    if (!cik) continue
+    toSeed.push({
+      company_id: id,
+      source_key: SEC_EDGAR_SOURCE_KEY,
+      label: 'SEC EDGAR (company filings list)',
+      base_url: secEdgarCompanyUrl(cik),
+    })
+  }
+
+  if (toSeed.length === 0) return 0
+
+  const batch = 150
+  let seeded = 0
+  for (let i = 0; i < toSeed.length; i += batch) {
+    const slice = toSeed.slice(i, i + batch)
+    const { error: upErr } = await supabase.from('company_sources').upsert(slice, {
+      onConflict: 'company_id,source_key',
+    })
+    if (upErr) {
+      console.error('upsert sec_edgar sources batch', i, upErr)
+      continue
+    }
+    seeded += slice.length
+  }
+
+  console.log(
+    '— Seeded SEC EDGAR sources:',
+    seeded,
+    'watchlist companies (had CIK, no company_sources yet)',
+  )
+  return seeded
+}
+
 async function monitorSingleUrl(
   supabase: SupabaseClient,
   ua: string,
@@ -219,6 +312,8 @@ async function main() {
   const ua = pilot.userAgent
 
   const supabase = createClient(supabaseUrl.trim(), serviceKey.trim())
+
+  await seedSecEdgarSourcesWhereMissing(supabase)
 
   const pilotKeys = new Set(
     pilot.entries.map((e) => pilotPairKey(e.slug, e.sourceKey)),

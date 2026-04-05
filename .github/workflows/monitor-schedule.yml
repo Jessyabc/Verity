@@ -1,5 +1,5 @@
-# Runs monitor:once — pilot URLs from pilot-urls.json PLUS every company_sources row in Supabase
-# (SEC / admin-added) that is not the same slug+source_key as a pilot JSON entry.
+# Runs monitor:once — seeds SEC EDGAR sources for watchlisted CIK companies with no sources,
+# then pilot URLs from pilot-urls.json, then every other company_sources row.
 # Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 name: Monitor once

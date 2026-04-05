@@ -107,8 +107,9 @@ function SearchTabHeader({
           <ActivityIndicator color={colors.accent} style={{ marginTop: space.md }} />
         ) : recentDocs.length === 0 ? (
           <Text style={[styles.recentHint, { color: colors.inkMuted }]}>
-            Nothing here yet — tracked pages show after monitor runs on company sources (IR/press URLs).
-            Add official site sources in Admin on the web if a company has none.
+            Nothing here yet — add companies to your watchlist, then run the monitor (GitHub Actions
+            “Monitor once” or locally: npm run monitor:once). SEC-listed names get an EDGAR filings page
+            tracked automatically; add IR URLs in Admin on the web for richer coverage.
           </Text>
         ) : (
           recentDocs.map((item) => (
