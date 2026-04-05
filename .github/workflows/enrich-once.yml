@@ -1,4 +1,9 @@
-# On-demand enrichment (OpenAI). Add secret OPENAI_API_KEY; reuse SUPABASE_* from monitor.
+# OpenAI enrichment for tracked_documents. Secrets: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
+# Uncomment schedule for a weekly run (watch OpenAI spend).
+#
+# on:
+#   schedule:
+#     - cron: '20 7 * * 0'
 
 name: Enrich documents once
 

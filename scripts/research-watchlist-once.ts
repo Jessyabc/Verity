@@ -68,23 +68,41 @@ async function main() {
   }
 
   for (const slug of slugs) {
-    const company = getPilotCompanyBySlug(slug)
-    if (!company) {
-      console.warn('Unknown slug, skip:', slug)
-      continue
+    const pilot = getPilotCompanyBySlug(slug)
+    let slugOut: string
+    let companyName: string
+    let ticker: string | null
+
+    if (pilot) {
+      slugOut = pilot.slug
+      companyName = pilot.name
+      ticker = pilot.ticker
+    } else {
+      const { data: row, error: rowErr } = await supabase
+        .from('companies')
+        .select('slug,name,ticker')
+        .eq('slug', slug)
+        .maybeSingle()
+      if (rowErr || !row) {
+        console.warn('Unknown slug (not in pilot or companies), skip:', slug)
+        continue
+      }
+      slugOut = row.slug as string
+      companyName = row.name as string
+      ticker = (row.ticker as string | null) ?? null
     }
 
     try {
-      console.log('—', company.slug, company.name)
+      console.log('—', slugOut, companyName)
       const { items, model } = await fetchCompanyResearchFromPerplexity(
-        company.name,
-        company.ticker,
+        companyName,
+        ticker,
       )
       const { error } = await supabase.from('company_research_cache').upsert(
         {
-          slug: company.slug,
-          company_name: company.name,
-          ticker: company.ticker,
+          slug: slugOut,
+          company_name: companyName,
+          ticker,
           items,
           fetched_at: new Date().toISOString(),
           error: null,
@@ -99,9 +117,9 @@ async function main() {
       console.error('  error', msg)
       await supabase.from('company_research_cache').upsert(
         {
-          slug: company.slug,
-          company_name: company.name,
-          ticker: company.ticker,
+          slug: slugOut,
+          company_name: companyName,
+          ticker,
           items: [],
           fetched_at: new Date().toISOString(),
           error: msg.slice(0, 2000),

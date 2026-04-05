@@ -1,5 +1,6 @@
-# Runs the one-shot monitor against Supabase (robots → GET → hash → upsert).
-# Add repository secrets: SUPABASE_URL (or reuse your project URL), SUPABASE_SERVICE_ROLE_KEY.
+# Runs monitor:once — pilot URLs from pilot-urls.json PLUS every company_sources row in Supabase
+# (SEC / admin-added) that is not the same slug+source_key as a pilot JSON entry.
+# Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 name: Monitor once
 

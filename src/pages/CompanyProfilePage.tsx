@@ -9,6 +9,7 @@ import type { MonitoredSource } from '@/data/types'
 import { useCompanyMonitoring } from '@/hooks/useCompanyMonitoring'
 import { useReadUpdates } from '@/hooks/useReadUpdates'
 import { useWatchlist } from '@/hooks/useWatchlist'
+import { resolveProfileCompany } from '@/lib/companyProfileView'
 import { cn } from '@/lib/cn'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import {
@@ -31,12 +32,36 @@ function sourceBadgeLabel(status: MonitoredSource['status']) {
 
 export function CompanyProfilePage() {
   const { slug } = useParams()
-  const company = slug ? getPilotCompanyBySlug(slug) : undefined
+  const pilot = slug ? getPilotCompanyBySlug(slug) : undefined
   const { isWatched, toggle } = useWatchlist()
   const { isRead } = useReadUpdates()
   const { loading: dbLoading, error: dbError, bundle } = useCompanyMonitoring(slug)
 
-  if (!company) {
+  const view = resolveProfileCompany(pilot, bundle?.company ?? undefined)
+
+  const waitingForDb =
+    Boolean(slug) &&
+    !pilot &&
+    isSupabaseConfigured() &&
+    dbLoading
+
+  if (!slug) {
+    return (
+      <Container className="max-w-xl">
+        <p className="text-[15px] text-ink-muted">Missing company slug.</p>
+      </Container>
+    )
+  }
+
+  if (waitingForDb) {
+    return (
+      <Container>
+        <p className="text-[15px] text-ink-muted">Loading company…</p>
+      </Container>
+    )
+  }
+
+  if (!view) {
     return (
       <Container className="max-w-xl">
         <header className="mb-8">
@@ -44,11 +69,11 @@ export function CompanyProfilePage() {
             Company
           </p>
           <h1 className="mt-2 text-2xl font-medium tracking-[-0.03em] text-ink">
-            Not in pilot universe
+            Company not found
           </h1>
           <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
-            This slug isn’t in the bundled dataset yet. We don’t fake coverage —
-            add it to <code className="rounded-md bg-black/[0.04] px-1.5 py-0.5 font-mono text-[13px] text-ink">pilot-universe.ts</code> when you’re ready.
+            This slug isn’t in the pilot bundle or your Supabase inventory yet. Ask an admin to add
+            it, or extend <code className="rounded-md bg-black/[0.04] px-1.5 py-0.5 font-mono text-[13px] text-ink">pilot-universe.ts</code>.
           </p>
         </header>
         <Card>
@@ -60,12 +85,12 @@ export function CompanyProfilePage() {
     )
   }
 
-  const watched = isWatched(company.slug)
+  const watched = isWatched(view.slug)
 
   const dbSourceByKey = new Map(
     (bundle?.sources ?? []).map((s) => [s.source_key, s] as const),
   )
-  const pilotSourceKeys = new Set(company.sources.map((s) => s.id))
+  const pilotSourceKeys = new Set(view.pilotSources.map((s) => s.id))
   const extraDbSources = (bundle?.sources ?? []).filter((s) => !pilotSourceKeys.has(s.source_key))
 
   const latestCompanyCheckIso = (bundle?.sources ?? []).reduce<string | null>((best, s) => {
@@ -76,7 +101,7 @@ export function CompanyProfilePage() {
   const companyLastCheckLabel =
     latestCompanyCheckIso != null
       ? formatAgo(latestCompanyCheckIso)
-      : company.companyLastCheckedLabel
+      : view.companyLastCheckedLabel
 
   const dbDocuments = bundle?.documents ?? []
   const fetchLogs = (bundle?.fetchLogs ?? []).slice(0, 5)
@@ -86,31 +111,36 @@ export function CompanyProfilePage() {
       <header className="mb-10 flex flex-col gap-6 sm:mb-12 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 gap-4 sm:gap-5">
           <CompanyLogo
-            name={company.name}
-            ticker={company.ticker}
-            logoUrl={company.logoUrl}
+            name={view.name}
+            ticker={view.ticker}
+            logoUrl={view.logoUrl}
             size="lg"
             className="shadow-[0_8px_28px_rgba(12,13,17,0.06)]"
           />
           <div className="min-w-0">
             <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-ink-subtle">
               Company
+              {view.isDbOnly ? (
+                <span className="ml-2 rounded-md bg-accent-soft px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal text-ink-muted">
+                  Inventory
+                </span>
+              ) : null}
             </p>
             <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <h1 className="text-3xl font-medium tracking-[-0.03em] text-ink sm:text-[2rem]">
-                {company.name}
+                {view.name}
               </h1>
-              {company.ticker ? (
+              {view.ticker ? (
                 <span className="rounded-lg border border-black/[0.08] bg-white/90 px-2.5 py-1 font-mono text-[13px] font-medium tabular-nums text-ink">
-                  {company.ticker}
-                  {company.exchange ? (
-                    <span className="ml-1.5 text-ink-subtle">· {company.exchange}</span>
+                  {view.ticker}
+                  {view.exchange ? (
+                    <span className="ml-1.5 text-ink-subtle">· {view.exchange}</span>
                   ) : null}
                 </span>
               ) : null}
             </div>
             <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-ink-muted">
-              {company.tagline}
+              {view.tagline}
             </p>
           </div>
         </div>
@@ -119,13 +149,13 @@ export function CompanyProfilePage() {
             type="button"
             variant={watched ? 'secondary' : 'primary'}
             className="min-w-[11rem] px-5 py-2.5"
-            onClick={() => toggle(company.slug)}
+            onClick={() => toggle(view.slug)}
           >
             {watched ? 'On watchlist' : 'Watch'}
           </Button>
           {watched ? (
             <span className="text-center text-[12px] text-ink-subtle sm:text-right">
-              Stored in this browser for your account.
+              Synced to your account when Supabase is connected.
             </span>
           ) : null}
         </div>
@@ -136,7 +166,7 @@ export function CompanyProfilePage() {
           className="mb-6 rounded-2xl border border-rose-200/80 bg-rose-50/80 px-4 py-3 text-[14px] text-rose-950"
           role="alert"
         >
-          Live monitoring data couldn’t load: {dbError}. Showing bundled pilot coverage only.
+          Live monitoring data couldn’t load: {dbError}. Showing profile fields only.
         </p>
       ) : null}
 
@@ -144,7 +174,7 @@ export function CompanyProfilePage() {
         <Card>
           <h2 className="text-[15px] font-medium text-ink">Overview</h2>
           <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
-            {company.overview}
+            {view.overview}
           </p>
           <p className="mt-5 rounded-xl bg-black/[0.03] px-4 py-3 text-[13px] leading-relaxed text-ink-subtle">
             AI-generated profiles will be labeled when wired to the model stack.
@@ -162,7 +192,7 @@ export function CompanyProfilePage() {
             ) : null}
           </p>
           <ul className="mt-6 space-y-4">
-            {company.sources.map((s) => {
+            {view.pilotSources.map((s) => {
               const db = dbSourceByKey.get(s.id)
               const lastCheck = db ? formatAgo(db.last_run_at) : s.lastCheckedLabel
               const status = db ? mapDbStatusToUi(db.last_status) : s.status
@@ -229,6 +259,12 @@ export function CompanyProfilePage() {
               )
             })}
           </ul>
+          {view.pilotSources.length === 0 && extraDbSources.length === 0 ? (
+            <p className="mt-4 text-[14px] leading-relaxed text-ink-muted">
+              No sources yet. Run <span className="font-mono text-[12px]">npm run monitor:once</span>{' '}
+              after adding URLs, or add a source from admin inventory.
+            </p>
+          ) : null}
           {fetchLogs.length > 0 ? (
             <div className="mt-6 rounded-xl bg-black/[0.03] px-3 py-3">
               <p className="text-[12px] font-medium text-ink-muted">Recent fetch attempts</p>
@@ -253,9 +289,9 @@ export function CompanyProfilePage() {
       </div>
 
       <CompanyResearchSection
-        slug={company.slug}
-        companyName={company.name}
-        ticker={company.ticker}
+        slug={view.slug}
+        companyName={view.name}
+        ticker={view.ticker}
       />
 
       <div className="mt-10 space-y-8">
@@ -305,20 +341,25 @@ export function CompanyProfilePage() {
         ) : null}
 
         <div>
-          <h2 className="text-[15px] font-medium text-ink">Pilot demo updates</h2>
+          <h2 className="text-[15px] font-medium text-ink">
+            {view.isDbOnly ? 'Bundled demo updates' : 'Pilot demo updates'}
+          </h2>
           <p className="mt-1 text-[13px] text-ink-subtle">
-            Bundled sample narratives — distinct from live hash rows above.
+            {view.isDbOnly
+              ? 'Sample narratives exist only for bundled pilot issuers — use live tracked URLs above.'
+              : 'Bundled sample narratives — distinct from live hash rows above.'}
           </p>
-          {company.updates.length === 0 ? (
+          {view.pilotUpdates.length === 0 ? (
             <Card className="mt-4 border-dashed border-black/[0.1] bg-white/45 shadow-none">
               <p className="text-[14px] leading-relaxed text-ink-muted">
-                No sample documents for this issuer yet — monitoring will populate this list when
-                new URLs appear.
+                {view.isDbOnly
+                  ? 'No bundled demos for inventory-only companies.'
+                  : 'No sample documents for this issuer yet — monitoring will populate this list when new URLs appear.'}
               </p>
             </Card>
           ) : (
             <ul className="mt-4 space-y-3">
-              {company.updates.map((u) => (
+              {view.pilotUpdates.map((u) => (
                 <li key={u.id}>
                   <Link to={`/app/updates/${u.id}`}>
                     <Card

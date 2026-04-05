@@ -1,14 +1,11 @@
 /**
  * Invoke from the app: supabase.functions.invoke('research-company', { body: { slug, companyName, ticker } })
- * Secrets: PERPLEXITY_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ * Requires a signed-in user (Authorization: Bearer <access_token>).
+ * Secrets: PERPLEXITY_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
-
-const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-}
+import { corsHeaders } from '../_shared/cors.ts'
+import { requireSession } from '../_shared/requireSession.ts'
 
 function buildPrompt(companyName: string, ticker: string | null): string {
   const t = ticker ? ` (${ticker})` : ''
@@ -62,6 +59,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const auth = await requireSession(req)
+    if ('response' in auth) return auth.response
+
     const body = (await req.json()) as {
       slug?: string
       companyName?: string

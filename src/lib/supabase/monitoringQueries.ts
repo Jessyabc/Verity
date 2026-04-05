@@ -46,6 +46,39 @@ export function mapDbStatusToUi(
   return 'error'
 }
 
+export async function fetchCompanyRowBySlug(
+  slug: string,
+): Promise<DbCompany | null> {
+  if (!isSupabaseConfigured()) return null
+
+  const sb = getSupabaseBrowserClient()
+  const { data, error } = await sb
+    .from('companies')
+    .select('*')
+    .eq('slug', slug)
+    .maybeSingle()
+
+  if (error) throw error
+  return data ? (data as DbCompany) : null
+}
+
+/**
+ * Server-side search via `search_companies` RPC (scales to large SEC universes).
+ * Empty query returns the newest rows (browse).
+ */
+export async function fetchCompaniesForSearch(query: string): Promise<DbCompany[]> {
+  if (!isSupabaseConfigured()) return []
+
+  const sb = getSupabaseBrowserClient()
+  const { data, error } = await sb.rpc('search_companies', {
+    p_query: query.trim(),
+    p_limit: 60,
+  })
+
+  if (error) throw error
+  return (data ?? []) as DbCompany[]
+}
+
 export async function fetchCompanyBundleBySlug(
   slug: string,
 ): Promise<{

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
+import { messageFromFunctionsInvokeFailure } from '@/lib/supabase/edgeFunctionError'
 import {
   fetchResearchCacheRow,
   type CompanyResearchRow,
@@ -40,13 +41,16 @@ export function useCompanyResearch(
     setError(null)
     try {
       const sb = getSupabaseBrowserClient()
-      const { data, error: fnErr } = await sb.functions.invoke<{
+      const { data, error: fnErr, response: fnResponse } = await sb.functions.invoke<{
         ok?: boolean
         error?: string
       }>('research-company', {
         body: { slug, companyName, ticker },
       })
-      if (fnErr) throw new Error(fnErr.message)
+      if (fnErr) {
+        const msg = await messageFromFunctionsInvokeFailure(fnErr, fnResponse)
+        throw new Error(msg)
+      }
       if (data && typeof data === 'object' && data.error) {
         throw new Error(String(data.error))
       }

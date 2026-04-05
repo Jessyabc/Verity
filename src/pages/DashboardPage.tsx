@@ -13,7 +13,12 @@ import { useRecentDbDocuments } from '@/hooks/useRecentDbDocuments'
 import { useWatchlist } from '@/hooks/useWatchlist'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
-import { formatAgo, shortDocumentTitle } from '@/lib/supabase/monitoringQueries'
+import { messageFromFunctionsInvokeFailure } from '@/lib/supabase/edgeFunctionError'
+import {
+  fetchCompanyRowBySlug,
+  formatAgo,
+  shortDocumentTitle,
+} from '@/lib/supabase/monitoringQueries'
 
 export function DashboardPage() {
   const { slugs } = useWatchlist()
@@ -36,12 +41,31 @@ export function DashboardPage() {
     try {
       const sb = getSupabaseBrowserClient()
       for (const slug of slugs) {
-        const c = getPilotCompanyBySlug(slug)
-        if (!c) continue
-        const { error } = await sb.functions.invoke('research-company', {
-          body: { slug: c.slug, companyName: c.name, ticker: c.ticker },
-        })
-        if (error) throw new Error(error.message)
+        const pilot = getPilotCompanyBySlug(slug)
+        let companyName: string
+        let ticker: string | null
+        if (pilot) {
+          companyName = pilot.name
+          ticker = pilot.ticker
+        } else {
+          const row = await fetchCompanyRowBySlug(slug)
+          if (!row) continue
+          companyName = row.name
+          ticker = row.ticker
+        }
+        const { data, error, response } = await sb.functions.invoke<{ error?: string }>(
+          'research-company',
+          {
+            body: { slug, companyName, ticker },
+          },
+        )
+        if (error) {
+          const msg = await messageFromFunctionsInvokeFailure(error, response)
+          throw new Error(msg)
+        }
+        if (data && typeof data === 'object' && 'error' in data && data.error) {
+          throw new Error(String(data.error))
+        }
       }
     } catch (e: unknown) {
       setResearchErr(e instanceof Error ? e.message : String(e))
@@ -62,8 +86,8 @@ export function DashboardPage() {
           </h1>
           <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-ink-muted">
             {hasWatchlist
-              ? 'Pilot data and watchlist both live locally in this build — swap for an API when you’re ready.'
-              : 'Add companies from search. Watchlists save in your browser for this signed-in session.'}
+              ? 'Pilot bundle plus Supabase inventory — watchlist syncs when connected.'
+              : 'Add companies from search, then track updates and research here.'}
           </p>
         </div>
         <Button variant="secondary" className="shrink-0 self-start sm:self-auto" asChild>

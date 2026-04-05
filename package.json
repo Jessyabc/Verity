@@ -11,7 +11,8 @@
     "monitor:once": "tsx scripts/monitor-once.ts",
     "enrich:once": "tsx scripts/enrich-documents-once.ts",
     "research:company": "tsx scripts/research-company-once.ts",
-    "research:watchlist": "tsx scripts/research-watchlist-once.ts"
+    "research:watchlist": "tsx scripts/research-watchlist-once.ts",
+    "import:sec-tickers": "tsx scripts/import-sec-tickers.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",

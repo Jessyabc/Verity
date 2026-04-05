@@ -8,8 +8,10 @@ import { SignupPage } from '@/pages/SignupPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { SearchPage } from '@/pages/SearchPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { AdminInventoryPage } from '@/pages/AdminInventoryPage'
 import { CompanyProfilePage } from '@/pages/CompanyProfilePage'
 import { UpdateDetailPage } from '@/pages/UpdateDetailPage'
+import { RequireAdmin } from '@/routes/RequireAdmin'
 
 export default function App() {
   return (
@@ -28,6 +30,14 @@ export default function App() {
               <Route path="settings" element={<SettingsPage />} />
               <Route path="company/:slug" element={<CompanyProfilePage />} />
               <Route path="updates/:id" element={<UpdateDetailPage />} />
+              <Route
+                path="admin/inventory"
+                element={
+                  <RequireAdmin>
+                    <AdminInventoryPage />
+                  </RequireAdmin>
+                }
+              />
             </Route>
           </Route>
 
