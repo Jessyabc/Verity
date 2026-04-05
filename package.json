@@ -3,10 +3,15 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "dev": "vite",
+    "dev:mobile": "npm run start -w mobile",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "lint:mobile": "npm run lint -w mobile",
     "preview": "vite preview",
     "monitor:once": "tsx scripts/monitor-once.ts",
     "enrich:once": "tsx scripts/enrich-documents-once.ts",

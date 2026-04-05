@@ -30,3 +30,6 @@ dist-ssr
 
 # Supabase CLI local cache
 supabase/.temp/
+
+# Expo (if CLI is run from repo root by mistake)
+.expo/
