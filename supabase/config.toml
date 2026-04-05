@@ -1,0 +1,11 @@
+# Edge Functions: the hosted gateway’s JWT check can reject valid user access tokens signed with
+# ES256 (asymmetric / JWT signing keys). PostgREST accepts the same token; `functions.invoke` then
+# gets 401 `{"message":"Invalid JWT"}` before Deno runs.
+# These functions still authenticate inside the handler (requireSession / requireAdminEmail).
+# @see https://github.com/supabase/supabase/issues/42810
+
+[functions.research-company]
+verify_jwt = false
+
+[functions.admin-upsert-company]
+verify_jwt = false
