@@ -33,7 +33,8 @@ export async function requireSession(
     error,
   } = await supabase.auth.getUser(jwt)
 
-  if (error || !user?.email) {
+  // Require a verified JWT user only — not `email` (OAuth / phone / Apple may omit email).
+  if (error || !user?.id) {
     return {
       response: new Response(JSON.stringify({ error: 'Invalid or expired session' }), {
         status: 401,
@@ -42,7 +43,7 @@ export async function requireSession(
     }
   }
 
-  return { user }
+  return { user: { id: user.id, email: user.email } }
 }
 
 export function requireAdminEmail(user: { email?: string }): { ok: true } | { response: Response } {

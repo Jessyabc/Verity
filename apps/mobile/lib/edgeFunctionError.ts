@@ -1,5 +1,10 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 
+function withStatus(status: number, message: string): string {
+  if (message.includes(`HTTP ${status}`)) return message
+  return `HTTP ${status}: ${message}`
+}
+
 export async function messageFromFunctionsInvokeFailure(
   fnErr: unknown,
   response: Response | undefined,
@@ -12,18 +17,30 @@ export async function messageFromFunctionsInvokeFailure(
       : undefined)
   if (!res) return fallback
 
+  const status = res.status
+
   try {
-    const ct = (res.headers.get('content-type') ?? '').split(';')[0].trim()
-    if (ct === 'application/json') {
-      const j = (await res.clone().json()) as { error?: unknown }
-      if (typeof j?.error === 'string' && j.error.trim()) return j.error.trim()
-    } else {
-      const t = (await res.clone().text()).trim()
-      if (t) return t.length > 400 ? `${t.slice(0, 400)}…` : t
+    const raw = await res.clone().text()
+    const trimmed = raw.trim()
+    const ct = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
+    const looksJson = ct.includes('application/json') || trimmed.startsWith('{')
+
+    if (looksJson && trimmed) {
+      try {
+        const j = JSON.parse(trimmed) as { error?: unknown }
+        if (typeof j?.error === 'string' && j.error.trim()) {
+          return withStatus(status, j.error.trim())
+        }
+      } catch {
+        // fall through to plain text
+      }
+    }
+    if (trimmed) {
+      return withStatus(status, trimmed.length > 400 ? `${trimmed.slice(0, 400)}…` : trimmed)
     }
   } catch {
     // ignore
   }
 
-  return fallback
+  return withStatus(status, fallback)
 }

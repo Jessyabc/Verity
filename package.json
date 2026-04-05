@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev": "vite",
-    "dev:mobile": "cd apps/mobile && npx expo start",
+    "dev:mobile": "npx expo start ./apps/mobile",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "lint:mobile": "npm run lint -w mobile",
