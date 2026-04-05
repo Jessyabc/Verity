@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev": "vite",
-    "dev:mobile": "npm run start -w mobile",
+    "dev:mobile": "cd apps/mobile && npx expo start",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "lint:mobile": "npm run lint -w mobile",
@@ -23,11 +23,15 @@
     "@supabase/supabase-js": "^2.101.1",
     "openai": "^6.33.0",
     "pdf-parse": "^2.4.5",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-router-dom": "^7.14.0",
     "robots-parser": "^3.0.1",
     "tailwind-merge": "^3.5.0"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

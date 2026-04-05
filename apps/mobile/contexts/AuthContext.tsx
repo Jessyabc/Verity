@@ -18,6 +18,11 @@ type AuthContextValue = {
   session: Session | null
   loading: boolean
   initialized: boolean
+  signInWithPassword: (email: string, password: string) => Promise<{ error: Error | null }>
+  signUpWithPassword: (
+    email: string,
+    password: string,
+  ) => Promise<{ error: Error | null; hint?: string }>
   signInWithMagicLink: (email: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
 }
@@ -67,6 +72,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const signInWithPassword = useCallback(async (email: string, password: string) => {
+    if (!isSupabaseConfigured()) {
+      return { error: new Error('Supabase is not configured (missing EXPO_PUBLIC_* env).') }
+    }
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    })
+    return { error: error ? new Error(error.message) : null }
+  }, [])
+
+  const signUpWithPassword = useCallback(async (email: string, password: string) => {
+    if (!isSupabaseConfigured()) {
+      return { error: new Error('Supabase is not configured (missing EXPO_PUBLIC_* env).') }
+    }
+    if (password.length < 6) {
+      return { error: new Error('Password must be at least 6 characters.') }
+    }
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+    })
+    if (error) return { error: new Error(error.message) }
+    if (!data.session && data.user) {
+      return {
+        error: null,
+        hint: 'Confirm your email if your Supabase project requires it, then sign in.',
+      }
+    }
+    return { error: null }
+  }, [])
+
   const signInWithMagicLink = useCallback(async (email: string) => {
     if (!isSupabaseConfigured()) {
       return { error: new Error('Supabase is not configured (missing EXPO_PUBLIC_* env).') }
@@ -88,10 +125,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       loading: !initialized,
       initialized,
+      signInWithPassword,
+      signUpWithPassword,
       signInWithMagicLink,
       signOut,
     }),
-    [session, initialized, signInWithMagicLink, signOut],
+    [
+      session,
+      initialized,
+      signInWithPassword,
+      signUpWithPassword,
+      signInWithMagicLink,
+      signOut,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

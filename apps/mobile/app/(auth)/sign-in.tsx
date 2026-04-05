@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text as RNText,
   TextInput,
@@ -11,16 +12,49 @@ import {
 
 import { Text, View } from '@/components/Themed'
 import { useAuth } from '@/contexts/AuthContext'
+import { palette } from '@/constants/theme'
 import { isSupabaseConfigured } from '@/lib/supabase'
 
 export default function SignInScreen() {
-  const { signInWithMagicLink } = useAuth()
+  const { signInWithPassword, signUpWithPassword, signInWithMagicLink } = useAuth()
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [showMagicLink, setShowMagicLink] = useState(false)
 
-  const onSubmit = async () => {
+  const onSignIn = async () => {
+    setMessage(null)
+    setError(null)
+    if (!email.trim() || !password) {
+      setError('Enter email and password.')
+      return
+    }
+    setBusy(true)
+    const { error: err } = await signInWithPassword(email, password)
+    setBusy(false)
+    if (err) setError(err.message)
+  }
+
+  const onSignUp = async () => {
+    setMessage(null)
+    setError(null)
+    if (!email.trim() || !password) {
+      setError('Enter email and password.')
+      return
+    }
+    setBusy(true)
+    const { error: err, hint } = await signUpWithPassword(email, password)
+    setBusy(false)
+    if (err) {
+      setError(err.message)
+      return
+    }
+    setMessage(hint ?? 'Account ready — you are signed in (or sign in after confirming email).')
+  }
+
+  const onMagicLink = async () => {
     setMessage(null)
     setError(null)
     if (!email.trim()) {
@@ -54,9 +88,17 @@ export default function SignInScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.flex}
     >
-      <View style={styles.center}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.title}>Sign in</Text>
-        <Text style={styles.hint}>We’ll email you a magic link (no password).</Text>
+        <Text style={styles.hint}>
+          Use email and password for simulator and TestFlight testing. Magic links need a working
+          redirect into the app (see below).
+        </Text>
+
         <TextInput
           style={styles.input}
           placeholder="you@company.com"
@@ -68,30 +110,87 @@ export default function SignInScreen() {
           onChangeText={setEmail}
           editable={!busy}
         />
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          placeholderTextColor="#888"
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          value={password}
+          onChangeText={setPassword}
+          editable={!busy}
+        />
+
         <Pressable
           style={[styles.button, busy && styles.buttonDisabled]}
-          onPress={() => void onSubmit()}
+          onPress={() => void onSignIn()}
           disabled={busy}
         >
           {busy ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <RNText style={styles.buttonText}>Send magic link</RNText>
+            <RNText style={styles.buttonText}>Sign in with password</RNText>
           )}
         </Pressable>
+
+        <Pressable
+          style={[styles.secondaryBtn, busy && styles.buttonDisabled]}
+          onPress={() => void onSignUp()}
+          disabled={busy}
+        >
+          <RNText style={styles.secondaryBtnText}>Create account</RNText>
+        </Pressable>
+
         {message ? <RNText style={styles.success}>{message}</RNText> : null}
         {error ? <RNText style={styles.err}>{error}</RNText> : null}
+
+        <Pressable
+          style={styles.linkRow}
+          onPress={() => setShowMagicLink((v) => !v)}
+          disabled={busy}
+        >
+          <RNText style={styles.linkText}>
+            {showMagicLink ? '▼ Hide magic link' : '▶ Magic link (production device)'}
+          </RNText>
+        </Pressable>
+
+        {showMagicLink ? (
+          <View style={styles.magicBox}>
+            <Text style={styles.magicHint}>
+              Opens the email link in the app via verity:// — configure Supabase redirect URLs and
+              use a real device or build where the scheme works.
+            </Text>
+            <Pressable
+              style={[styles.outlineBtn, busy && styles.buttonDisabled]}
+              onPress={() => void onMagicLink()}
+              disabled={busy}
+            >
+              <RNText style={styles.outlineBtnText}>Send magic link</RNText>
+            </Pressable>
+          </View>
+        ) : null}
+
         <Text style={styles.small}>
-          Add your redirect URL in Supabase (Auth → URL configuration), e.g. the value of
-          verity://auth-callback for production builds.
+          Supabase → Authentication → Providers: keep Email enabled. Password sign-in is allowed by
+          default; disable &quot;Confirm email&quot; for fastest local testing if you want instant
+          sign-up.
         </Text>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   )
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  scrollContent: {
+    padding: 24,
+    paddingTop: 16,
+    paddingBottom: 40,
+    maxWidth: 400,
+    width: '100%',
+    alignSelf: 'center',
+  },
   center: {
     flex: 1,
     padding: 24,
@@ -112,14 +211,39 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   button: {
-    backgroundColor: '#2563eb',
+    backgroundColor: palette.accent,
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: 'center',
+    marginTop: 4,
   },
+  secondaryBtn: {
+    marginTop: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  secondaryBtnText: { fontSize: 15, fontWeight: '600', color: palette.accent },
   buttonDisabled: { opacity: 0.7 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   success: { marginTop: 16, color: '#15803d', fontSize: 14 },
   err: { marginTop: 16, color: '#b91c1c', fontSize: 14 },
-  small: { marginTop: 24, fontSize: 12, opacity: 0.65 },
+  linkRow: { marginTop: 24, paddingVertical: 8 },
+  linkText: { fontSize: 14, fontWeight: '600', color: '#475569' },
+  magicBox: {
+    marginTop: 8,
+    padding: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  magicHint: { fontSize: 13, opacity: 0.85, marginBottom: 12 },
+  outlineBtn: {
+    borderWidth: 1,
+    borderColor: '#64748b',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  outlineBtnText: { fontSize: 15, fontWeight: '600' },
+  small: { marginTop: 20, fontSize: 12, opacity: 0.65 },
 })
