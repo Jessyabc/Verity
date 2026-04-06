@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useAuth } from '@/contexts/AuthContext'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
+import { formatAgo } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import {
   deleteWatchlistSlug,
@@ -120,7 +121,7 @@ function CompanyCard({ company, research, colors, onPress, onRemove }: CompanyCa
           ))}
           {research?.fetched_at ? (
             <Text style={[styles.researchAge, { color: colors.inkSubtle }]}>
-              Updated {formatAge(research.fetched_at)}
+              Updated {formatAgo(research.fetched_at)}
             </Text>
           ) : null}
         </View>
@@ -131,14 +132,6 @@ function CompanyCard({ company, research, colors, onPress, onRemove }: CompanyCa
       )}
     </Pressable>
   )
-}
-
-function formatAge(iso: string): string {
-  const d = Date.now() - new Date(iso).getTime()
-  const h = Math.floor(d / 3600000)
-  if (h < 1) return 'just now'
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
 }
 
 // ─── Main screen ─────────────────────────────────────────────────────────

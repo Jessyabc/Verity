@@ -76,6 +76,22 @@ function AuthAwareStack() {
           animation: 'slide_from_right',
         }}
       />
+      <Stack.Screen
+        name="reader/[slug]"
+        options={{
+          headerShown: true,
+          headerBackTitle: 'Back',
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
+        name="chat/[slug]"
+        options={{
+          headerShown: true,
+          headerBackTitle: 'Back',
+          animation: 'slide_from_right',
+        }}
+      />
       <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
     </Stack>
   )
