@@ -158,8 +158,7 @@ export default function SignInScreen() {
         {showMagicLink ? (
           <View style={styles.magicBox}>
             <Text style={styles.magicHint}>
-              We'll send a sign-in link to your email. Tap it on this device to open the app and
-              sign in instantly — no password needed.
+              {"We'll send a sign-in link to your email. Tap it on this device to open the app and sign in instantly — no password needed."}
             </Text>
             <Pressable
               style={[styles.outlineBtn, busy && styles.buttonDisabled]}

@@ -1,12 +1,23 @@
-import { useFocusEffect } from '@react-navigation/native'
+/**
+ * Discover — the signed-in home screen.
+ *
+ * Layout (top → bottom):
+ *  1. "Verity" wordmark + tagline
+ *  2. Liquid Glass search bar — expands inline with results when focused
+ *  3. Industry digest — cross-portfolio synthesis from watchlist
+ */
+
 import { useRouter } from 'expo-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
+  Keyboard,
   Linking,
+  Platform,
   Pressable,
-  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,338 +25,387 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { CompanyLogo } from '@/components/CompanyLogo'
+import { LiquidGlassView } from '@/components/LiquidGlass'
 import { useAuth } from '@/contexts/AuthContext'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
+import { useWatchlistDigest } from '@/hooks/useWatchlistDigest'
 import { searchCompanies, type SearchCompanyRow } from '@/lib/companySearch'
-import { shortDocumentTitle } from '@/lib/documentTitles'
-import { formatAgo } from '@/lib/format'
-import type { RecentDbDoc } from '@/lib/recentDocuments'
-import { fetchRecentDocumentsForSlugs } from '@/lib/recentDocuments'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
-import { syncSessionForApi } from '@/lib/syncSessionForApi'
 import { fetchWatchlistSlugs } from '@/lib/watchlistApi'
-import { font, radius, space } from '@/constants/theme'
+import { font, space } from '@/constants/theme'
+import type { DigestSource } from '@/lib/watchlistDigest'
 
-type HeaderProps = {
-  query: string
-  setQuery: (q: string) => void
-  onSearch: () => void
-  loading: boolean
-  searchError: string | null
-  user: { email?: string | null } | null
-  onSignOut: () => void
-  recentDocs: RecentDbDoc[]
-  recentLoading: boolean
-  onOpenCompany: (slug: string) => void
+const SEARCH_RESULTS_MAX_HEIGHT = 340
+
+// ─── Source type pill ────────────────────────────────────────────────────
+
+const SOURCE_COLORS: Record<string, string> = {
+  paper:   '#4f46e5',
+  filing:  '#0f766e',
+  report:  '#b45309',
+  news:    '#475569',
 }
 
-function SearchTabHeader({
-  query,
-  setQuery,
-  onSearch,
-  loading,
-  searchError,
-  user,
-  onSignOut,
-  recentDocs,
-  recentLoading,
-  onOpenCompany,
-}: HeaderProps) {
-  const colors = useVerityPalette()
-  const styles = buildStyles(colors)
-
+function SourcePill({ type }: { type: string }) {
   return (
-    <View>
-      <View style={styles.hero}>
-        <Text style={[styles.kicker, { color: colors.inkSubtle }]}>VERITY MONITOR</Text>
-        <Text style={[styles.h1, { color: colors.ink }]}>Companies</Text>
-        <Text style={[styles.lede, { color: colors.inkMuted }]}>
-          Search your universe, open profiles, and skim the latest documents from your watchlist.
-        </Text>
-        <View style={styles.accountRow}>
-          <Text style={[styles.email, { color: colors.inkMuted }]} numberOfLines={1}>
-            {user?.email ?? '—'}
-          </Text>
-          <Pressable onPress={onSignOut} hitSlop={8}>
-            <Text style={[styles.signOut, { color: colors.accent }]}>Sign out</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={[styles.searchCard, { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke }]}>
-        <TextInput
-          style={[
-            styles.input,
-            { color: colors.ink, borderColor: colors.stroke, backgroundColor: colors.surfaceSolid },
-          ]}
-          placeholder="Name, ticker, slug, or CIK…"
-          placeholderTextColor={colors.inkSubtle}
-          value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={onSearch}
-          returnKeyType="search"
-        />
-        <Pressable style={[styles.primaryBtn, { backgroundColor: colors.accent }]} onPress={onSearch}>
-          <Text style={styles.primaryBtnText}>Search</Text>
-        </Pressable>
-      </View>
-
-      {loading ? (
-        <ActivityIndicator style={{ marginVertical: space.md }} color={colors.accent} />
-      ) : null}
-      {searchError ? <Text style={[styles.err, { color: colors.danger }]}>{searchError}</Text> : null}
-
-      <View style={styles.recentSection}>
-        <Text style={[styles.recentKicker, { color: colors.inkSubtle }]}>FROM YOUR WATCHLIST</Text>
-        <Text style={[styles.recentTitle, { color: colors.ink }]}>Recent updates</Text>
-        {!user ? (
-          <Text style={[styles.recentHint, { color: colors.inkMuted }]}>
-            Sign in and add companies to your watchlist to see new filings and pages here.
-          </Text>
-        ) : recentLoading && recentDocs.length === 0 ? (
-          <ActivityIndicator color={colors.accent} style={{ marginTop: space.md }} />
-        ) : recentDocs.length === 0 ? (
-          <Text style={[styles.recentHint, { color: colors.inkMuted }]}>
-            Nothing here yet — add companies to your watchlist, then run the monitor (GitHub Actions
-            “Monitor once” or locally: npm run monitor:once). SEC-listed names get an EDGAR filings page
-            tracked automatically; add IR URLs in Admin on the web for richer coverage.
-          </Text>
-        ) : (
-          recentDocs.map((item) => (
-            <View
-              key={item.document.id}
-              style={[styles.recentRow, { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke }]}
-            >
-              <Pressable onPress={() => onOpenCompany(item.companySlug)}>
-                <Text style={[styles.recentCompany, { color: colors.accent }]}>{item.companyName}</Text>
-              </Pressable>
-              <Pressable onPress={() => void Linking.openURL(item.document.canonical_url)}>
-                <Text style={[styles.recentDocTitle, { color: colors.ink }]} numberOfLines={2}>
-                  {shortDocumentTitle(item.document)}
-                </Text>
-                {item.document.summary_text ? (
-                  <Text style={[styles.recentSnippet, { color: colors.inkMuted }]} numberOfLines={2}>
-                    {item.document.summary_text}
-                  </Text>
-                ) : null}
-                <Text style={[styles.recentMeta, { color: colors.inkSubtle }]}>
-                  {formatAgo(item.document.last_checked_at ?? item.document.first_seen_at)}
-                </Text>
-              </Pressable>
-            </View>
-          ))
-        )}
-      </View>
-
-      <Text style={[styles.resultsKicker, { color: colors.inkSubtle }]}>SEARCH RESULTS</Text>
-    </View>
+    <Text style={[styles.pill, { backgroundColor: SOURCE_COLORS[type] ?? '#475569' }]}>
+      {type.toUpperCase()}
+    </Text>
   )
 }
 
-export default function HomeScreen() {
-  const router = useRouter()
-  const insets = useSafeAreaInsets()
-  const colors = useVerityPalette()
-  const { user, signOut, initialized } = useAuth()
-  const [query, setQuery] = useState('')
-  const [rows, setRows] = useState<SearchCompanyRow[]>([])
-  const [loading, setLoading] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
-  const [recentDocs, setRecentDocs] = useState<RecentDbDoc[]>([])
-  const [recentLoading, setRecentLoading] = useState(false)
+// ─── Digest section ───────────────────────────────────────────────────────
 
-  const runSearch = useCallback(async (q: string, showMainSpinner = true) => {
-    if (!isSupabaseConfigured()) return
-    if (showMainSpinner) setLoading(true)
-    setSearchError(null)
-    try {
-      const data = await searchCompanies(q, 30)
-      setRows(data)
-    } catch (e) {
-      setSearchError(e instanceof Error ? e.message : 'Search failed')
-      setRows([])
-    } finally {
-      if (showMainSpinner) setLoading(false)
-    }
-  }, [])
+type DigestProps = {
+  digestText: string
+  sources: DigestSource[]
+  generating: boolean
+  colors: ReturnType<typeof useVerityPalette>
+}
 
-  const loadRecent = useCallback(async () => {
-    if (!user) {
-      setRecentDocs([])
-      return
-    }
-    setRecentLoading(true)
-    try {
-      await syncSessionForApi()
-      const slugs = await fetchWatchlistSlugs(supabase)
-      const docs = await fetchRecentDocumentsForSlugs(slugs, 10)
-      setRecentDocs(docs)
-    } catch {
-      setRecentDocs([])
-    } finally {
-      setRecentLoading(false)
-    }
-  }, [user])
-
-  useEffect(() => {
-    if (!initialized || !user) return
-    void runSearch('')
-  }, [runSearch, initialized, user])
-
-  useFocusEffect(
-    useCallback(() => {
-      void loadRecent()
-    }, [loadRecent]),
-  )
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true)
-    try {
-      await syncSessionForApi()
-      await Promise.all([runSearch(query, false), loadRecent()])
-    } finally {
-      setRefreshing(false)
-    }
-  }, [query, runSearch, loadRecent])
-
-  const styles = buildStyles(colors)
-
-  if (!isSupabaseConfigured()) {
+function DigestSection({ digestText, sources, generating, colors }: DigestProps) {
+  if (generating && !digestText) {
     return (
-      <View style={[styles.center, { backgroundColor: colors.canvas, paddingTop: insets.top }]}>
-        <Text style={styles.h1}>Configure Supabase</Text>
-        <Text style={styles.muted}>
-          Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to apps/mobile/.env
+      <View style={styles.digestGenerating}>
+        <ActivityIndicator size="small" color={colors.accent} style={{ marginRight: space.sm }} />
+        <Text style={[styles.digestGeneratingText, { color: colors.inkMuted }]}>
+          Synthesizing your portfolio…
         </Text>
       </View>
     )
   }
 
+  if (!digestText) return null
+
   return (
-    <View style={[styles.screen, { backgroundColor: colors.canvas, paddingTop: insets.top + space.sm }]}>
-      <FlatList
-        data={rows}
-        keyExtractor={(item) => item.id}
-        style={styles.list}
-        contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: insets.bottom + space.xl }}
-        keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={
-          <SearchTabHeader
-            query={query}
-            setQuery={setQuery}
-            onSearch={() => void runSearch(query)}
-            loading={loading}
-            searchError={searchError}
-            user={user}
-            onSignOut={() => void signOut()}
-            recentDocs={recentDocs}
-            recentLoading={recentLoading}
-            onOpenCompany={(slug) => router.push(`/company/${slug}`)}
-          />
-        }
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={colors.accent} />
-        }
-        ListEmptyComponent={
-          !loading ? (
-            <Text style={[styles.empty, { color: colors.inkSubtle }]}>
-              No results — try another query, or leave the field empty for the newest companies.
-            </Text>
-          ) : null
-        }
-        renderItem={({ item }) => (
-          <Pressable
-            style={[styles.row, { borderBottomColor: colors.stroke }]}
-            onPress={() => router.push(`/company/${item.slug}`)}
-          >
-            <CompanyLogo name={item.name} ticker={item.ticker} size="md" />
-            <View style={styles.rowText}>
-              <Text style={[styles.rowTitle, { color: colors.ink }]}>{item.name}</Text>
-              <Text style={[styles.rowMeta, { color: colors.inkMuted }]}>
-                {(item.ticker ?? '—') + ' · ' + item.slug}
-              </Text>
-            </View>
-          </Pressable>
-        )}
-      />
+    <View style={styles.digestContainer}>
+      <View style={styles.digestHeader}>
+        <Text style={[styles.digestKicker, { color: colors.inkSubtle }]}>YOUR WORLD</Text>
+        {generating ? <ActivityIndicator size="small" color={colors.accent} /> : null}
+      </View>
+      <Text style={[styles.digestTitle, { color: colors.ink }]}>{"What's happening"}</Text>
+      <Text style={[styles.digestBody, { color: colors.inkMuted }]}>{digestText}</Text>
+
+      {sources.length > 0 ? (
+        <View style={styles.sourcesContainer}>
+          <Text style={[styles.sourcesKicker, { color: colors.inkSubtle }]}>SOURCES</Text>
+          {sources.map((s, i) => (
+            <Pressable
+              key={`${s.url}-${i}`}
+              onPress={() => void Linking.openURL(s.url)}
+              style={[styles.sourceRow, { borderTopColor: colors.stroke }]}
+            >
+              <View style={styles.sourceRowTop}>
+                <SourcePill type={s.type} />
+                <Text style={[styles.sourceTitle, { color: colors.accent }]} numberOfLines={2}>
+                  {s.title}
+                </Text>
+              </View>
+              {s.relevance ? (
+                <Text style={[styles.sourceRelevance, { color: colors.inkMuted }]}>
+                  {s.relevance}
+                </Text>
+              ) : null}
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      <Text style={[styles.disclaimer, { color: colors.inkSubtle }]}>
+        AI synthesis · not investment advice
+      </Text>
     </View>
   )
 }
 
-function buildStyles(colors: ReturnType<typeof useVerityPalette>) {
-  return StyleSheet.create({
-    screen: { flex: 1 },
-    center: { flex: 1, justifyContent: 'center', padding: space.xl },
-    hero: { marginBottom: space.lg },
-    kicker: { fontFamily: font.medium, fontSize: 11, letterSpacing: 1.8, marginBottom: space.xs },
-    h1: { fontFamily: font.semi, fontSize: 28, letterSpacing: -0.6 },
-    lede: { fontFamily: font.regular, fontSize: 15, lineHeight: 22, marginTop: space.sm },
-    accountRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginTop: space.md,
-      gap: space.md,
-    },
-    email: { fontFamily: font.regular, fontSize: 14, flex: 1 },
-    signOut: { fontFamily: font.semi, fontSize: 14 },
-    searchCard: {
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      padding: space.md,
-      marginBottom: space.sm,
-    },
-    input: {
-      borderWidth: 1,
-      borderRadius: radius.sm,
-      paddingHorizontal: space.md,
-      paddingVertical: 12,
-      fontSize: 16,
-      fontFamily: font.regular,
-    },
-    primaryBtn: {
-      marginTop: space.md,
-      paddingVertical: space.md,
-      borderRadius: radius.sm,
-      alignItems: 'center',
-    },
-    primaryBtnText: { fontFamily: font.semi, color: '#fff', fontSize: 15 },
-    list: { flex: 1 },
-    empty: { fontFamily: font.regular, fontSize: 14, marginTop: space.md, marginBottom: space.lg },
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: space.md,
-      paddingVertical: space.md,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    rowText: { flex: 1, minWidth: 0 },
-    rowTitle: { fontFamily: font.semi, fontSize: 16 },
-    rowMeta: { fontFamily: font.regular, fontSize: 13, marginTop: 4 },
-    err: { fontFamily: font.regular, fontSize: 14, marginTop: space.sm },
-    muted: { fontFamily: font.regular, fontSize: 15, lineHeight: 22, marginTop: space.md },
-    recentSection: { marginTop: space.lg, marginBottom: space.md },
-    recentKicker: { fontFamily: font.medium, fontSize: 11, letterSpacing: 1.8 },
-    recentTitle: { fontFamily: font.semi, fontSize: 18, marginTop: space.xs },
-    recentHint: { fontFamily: font.regular, fontSize: 14, lineHeight: 20, marginTop: space.sm },
-    recentRow: {
-      marginTop: space.sm,
-      padding: space.md,
-      borderRadius: radius.md,
-      borderWidth: 1,
-    },
-    recentCompany: { fontFamily: font.semi, fontSize: 13, marginBottom: 4 },
-    recentDocTitle: { fontFamily: font.semi, fontSize: 15, lineHeight: 20 },
-    recentSnippet: { fontFamily: font.regular, fontSize: 13, lineHeight: 18, marginTop: 4 },
-    recentMeta: { fontFamily: font.regular, fontSize: 12, marginTop: 6 },
-    resultsKicker: {
-      fontFamily: font.medium,
-      fontSize: 11,
-      letterSpacing: 1.8,
-      marginTop: space.md,
-      marginBottom: space.sm,
-    },
+// ─── Main screen ─────────────────────────────────────────────────────────
+
+export default function DiscoverScreen() {
+  const router   = useRouter()
+  const insets   = useSafeAreaInsets()
+  const colors   = useVerityPalette()
+  const { user } = useAuth()
+
+  const [query, setQuery]           = useState('')
+  const [results, setResults]       = useState<SearchCompanyRow[]>([])
+  const [searching, setSearching]   = useState(false)
+  const [isFocused, setIsFocused]   = useState(false)
+  const [watchlistSlugs, setWatchlistSlugs] = useState<string[]>([])
+
+  const inputRef  = useRef<TextInput>(null)
+  const panelAnim = useRef(new Animated.Value(0)).current
+
+  const { digest, loading: digestLoading } = useWatchlistDigest(
+    user?.id ?? null,
+    watchlistSlugs,
+  )
+
+  useEffect(() => {
+    if (!user || !isSupabaseConfigured()) return
+    void fetchWatchlistSlugs(supabase).then(setWatchlistSlugs).catch(() => {})
+  }, [user])
+
+  const runSearch = useCallback(async (q: string) => {
+    if (!isSupabaseConfigured()) return
+    setSearching(true)
+    try {
+      const rows = await searchCompanies(q, 20)
+      setResults(rows)
+    } catch {
+      setResults([])
+    } finally {
+      setSearching(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isFocused) return
+    const t = setTimeout(() => void runSearch(query), 180)
+    return () => clearTimeout(t)
+  }, [query, isFocused, runSearch])
+
+  const onFocus = () => {
+    setIsFocused(true)
+    void runSearch(query)
+    Animated.spring(panelAnim, {
+      toValue: 1, useNativeDriver: false, tension: 180, friction: 18,
+    }).start()
+  }
+
+  const onBlur = () => {
+    setTimeout(() => {
+      setIsFocused(false)
+      Animated.spring(panelAnim, {
+        toValue: 0, useNativeDriver: false, tension: 200, friction: 22,
+      }).start()
+    }, 120)
+  }
+
+  const onSelectCompany = (slug: string) => {
+    Keyboard.dismiss()
+    setIsFocused(false)
+    router.push(`/company/${slug}`)
+  }
+
+  const panelHeight = panelAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, SEARCH_RESULTS_MAX_HEIGHT],
+    extrapolate: 'clamp',
   })
+  const panelOpacity = panelAnim.interpolate({
+    inputRange: [0, 0.4, 1],
+    outputRange: [0, 0, 1],
+  })
+
+  return (
+    <ScrollView
+      style={[styles.screen, { backgroundColor: colors.canvas }]}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + space.xl, paddingBottom: insets.bottom + 80 },
+      ]}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      {/* ── Wordmark + tagline ── */}
+      <View style={styles.hero}>
+        <Text style={[styles.wordmark, { color: colors.ink }]}>Verity</Text>
+        <Text style={[styles.tagline, { color: colors.inkMuted }]}>
+          Get a sense of what your businesses are doing
+        </Text>
+      </View>
+
+      {/* ── Liquid Glass search ── */}
+      <LiquidGlassView radius={22} style={styles.searchWrapper} innerStyle={{ paddingVertical: 0 }} shadow>
+        <View style={styles.inputRow}>
+          <Text style={[styles.searchIcon, { color: colors.inkSubtle }]}>⌕</Text>
+          <TextInput
+            ref={inputRef}
+            style={[styles.input, { color: colors.ink }]}
+            placeholder="Search companies…"
+            placeholderTextColor={colors.inkSubtle}
+            value={query}
+            onChangeText={setQuery}
+            onFocus={onFocus}
+            onBlur={onBlur}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+            clearButtonMode={Platform.OS === 'ios' ? 'while-editing' : 'never'}
+          />
+          {searching ? (
+            <ActivityIndicator size="small" color={colors.accent} style={{ marginRight: space.sm }} />
+          ) : null}
+        </View>
+
+        <Animated.View style={{ height: panelHeight, opacity: panelOpacity, overflow: 'hidden' }}>
+          <View style={[styles.resultsDivider, { backgroundColor: colors.stroke }]} />
+          <FlatList
+            data={results}
+            keyExtractor={(item) => item.id}
+            keyboardShouldPersistTaps="handled"
+            scrollEnabled={false}
+            ListEmptyComponent={
+              !searching ? (
+                <Text style={[styles.emptyResults, { color: colors.inkSubtle }]}>
+                  {query.length > 0 ? 'No matches' : 'Browse companies…'}
+                </Text>
+              ) : null
+            }
+            renderItem={({ item }) => (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.resultRow,
+                  {
+                    borderBottomColor: colors.stroke,
+                    backgroundColor: pressed ? colors.stroke : 'transparent',
+                  },
+                ]}
+                onPress={() => onSelectCompany(item.slug)}
+              >
+                <View style={styles.resultText}>
+                  <Text style={[styles.resultName, { color: colors.ink }]} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  {item.exchange ? (
+                    <Text style={[styles.resultMeta, { color: colors.inkMuted }]} numberOfLines={1}>
+                      {[item.ticker, item.exchange].filter(Boolean).join(' · ')}
+                    </Text>
+                  ) : null}
+                </View>
+                {item.ticker ? (
+                  <Text style={[styles.resultTicker, { color: colors.inkSubtle }]}>
+                    {item.ticker}
+                  </Text>
+                ) : null}
+              </Pressable>
+            )}
+          />
+        </Animated.View>
+      </LiquidGlassView>
+
+      {/* ── Industry digest ── */}
+      {user && watchlistSlugs.length > 0 ? (
+        <DigestSection
+          digestText={digest?.digest_text ?? ''}
+          sources={(digest?.sources ?? []) as DigestSource[]}
+          generating={digest?.is_generating ?? (digestLoading && !digest)}
+          colors={colors}
+        />
+      ) : user ? (
+        <Text style={[styles.digestHint, { color: colors.inkSubtle }]}>
+          Add companies to your watchlist to see your industry digest here.
+        </Text>
+      ) : null}
+    </ScrollView>
+  )
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  screen:  { flex: 1 },
+  content: { paddingHorizontal: space.lg },
+
+  hero: { marginBottom: space.xl + space.sm },
+  wordmark: {
+    fontFamily: font.bold,
+    fontSize: 42,
+    letterSpacing: -1.5,
+    lineHeight: 48,
+  },
+  tagline: {
+    fontFamily: font.regular,
+    fontSize: 17,
+    lineHeight: 24,
+    marginTop: space.sm,
+    maxWidth: 280,
+  },
+
+  searchWrapper: { marginBottom: space.xl },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: space.md,
+    paddingVertical: 14,
+    gap: space.sm,
+  },
+  searchIcon: { fontSize: 18, lineHeight: 22, marginTop: -1 },
+  input: {
+    flex: 1,
+    fontFamily: font.regular,
+    fontSize: 17,
+    height: 22,
+    padding: 0,
+  },
+  resultsDivider: { height: StyleSheet.hairlineWidth },
+  resultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: space.sm,
+  },
+  resultText:   { flex: 1, minWidth: 0 },
+  resultName:   { fontFamily: font.semi, fontSize: 15 },
+  resultMeta:   { fontFamily: font.regular, fontSize: 13, marginTop: 2 },
+  resultTicker: { fontFamily: 'Courier', fontSize: 12, letterSpacing: 0.5 },
+  emptyResults: {
+    fontFamily: font.regular,
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: space.xl,
+    paddingHorizontal: space.lg,
+  },
+
+  digestContainer: { marginTop: space.xs },
+  digestHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space.xs,
+  },
+  digestKicker: { fontFamily: font.medium, fontSize: 11, letterSpacing: 1.8 },
+  digestTitle:  { fontFamily: font.semi, fontSize: 22, letterSpacing: -0.5, marginBottom: space.md },
+  digestBody:   { fontFamily: font.regular, fontSize: 15, lineHeight: 24 },
+  digestGenerating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: space.xl,
+    paddingHorizontal: space.sm,
+  },
+  digestGeneratingText: { fontFamily: font.regular, fontSize: 14 },
+  digestHint: {
+    fontFamily: font.regular,
+    fontSize: 14,
+    marginTop: space.xl,
+    textAlign: 'center',
+  },
+
+  sourcesContainer: { marginTop: space.xl },
+  sourcesKicker:    { fontFamily: font.medium, fontSize: 11, letterSpacing: 1.8, marginBottom: space.sm },
+  sourceRow:        { paddingVertical: space.md, borderTopWidth: StyleSheet.hairlineWidth },
+  sourceRowTop:     { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
+  pill: {
+    color: '#fff',
+    fontFamily: font.medium,
+    fontSize: 9,
+    letterSpacing: 0.8,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
+  sourceTitle:     { flex: 1, fontFamily: font.semi, fontSize: 14, lineHeight: 19 },
+  sourceRelevance: { fontFamily: font.regular, fontSize: 13, lineHeight: 18, marginTop: 4 },
+  disclaimer: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    marginTop: space.xl,
+    textAlign: 'center',
+    opacity: 0.6,
+  },
+})
