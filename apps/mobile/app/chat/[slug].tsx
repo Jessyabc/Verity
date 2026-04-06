@@ -1,0 +1,377 @@
+/**
+ * Afaqi — contextual research companion for a specific company.
+ *
+ * Rules:
+ *  - Answers only from the company's current research context.
+ *  - Cites sources in each response.
+ *  - Clearly marks uncertainty vs. verified evidence.
+ */
+
+import { useLocalSearchParams, useNavigation } from 'expo-router'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+
+import { useAuth } from '@/contexts/AuthContext'
+import { useVerityPalette } from '@/hooks/useVerityPalette'
+import { fetchResearchCacheRow } from '@/lib/researchCache'
+import { supabase } from '@/lib/supabase'
+import { font, radius, space } from '@/constants/theme'
+
+type AfaqiSource = {
+  title: string
+  url: string
+  source?: string
+}
+
+type Message = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  sources?: AfaqiSource[]
+}
+
+function safeHostname(url: string): string {
+  try { return new URL(url).hostname } catch { return url }
+}
+
+function UserBubble({ msg, colors }: { msg: Message; colors: ReturnType<typeof useVerityPalette> }) {
+  return (
+    <View style={styles.userBubbleRow}>
+      <View style={[styles.userBubble, { backgroundColor: colors.accent }]}>
+        <Text style={styles.userBubbleText}>{msg.content}</Text>
+      </View>
+    </View>
+  )
+}
+
+function AssistantBubble({
+  msg,
+  colors,
+}: {
+  msg: Message
+  colors: ReturnType<typeof useVerityPalette>
+}) {
+  return (
+    <View style={styles.assistantRow}>
+      <View style={styles.assistantAvatar}>
+        <Text style={[styles.avatarText, { color: colors.accent }]}>A</Text>
+      </View>
+      <View style={styles.assistantContent}>
+        <View style={[styles.assistantBubble, { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke }]}>
+          <Text style={[styles.assistantText, { color: colors.ink }]}>{msg.content}</Text>
+        </View>
+        {msg.sources && msg.sources.length > 0 ? (
+          <View style={styles.sourcesRow}>
+            {msg.sources.map((s, i) => (
+              <Pressable
+                key={i}
+                style={[styles.sourceChip, { borderColor: colors.stroke, backgroundColor: colors.accentSoft }]}
+                onPress={() => void Linking.openURL(s.url)}
+              >
+                <Text style={[styles.sourceChipText, { color: colors.accent }]} numberOfLines={1}>
+                  {s.source ?? safeHostname(s.url)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+      </View>
+    </View>
+  )
+}
+
+function TypingIndicator({ colors }: { colors: ReturnType<typeof useVerityPalette> }) {
+  return (
+    <View style={styles.assistantRow}>
+      <View style={styles.assistantAvatar}>
+        <Text style={[styles.avatarText, { color: colors.accent }]}>A</Text>
+      </View>
+      <View style={[styles.assistantBubble, { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke }]}>
+        <ActivityIndicator size="small" color={colors.accent} />
+      </View>
+    </View>
+  )
+}
+
+export default function ChatScreen() {
+  const { slug: slugParam } = useLocalSearchParams<{ slug: string }>()
+  const slug      = typeof slugParam === 'string' ? slugParam : slugParam?.[0] ?? ''
+  const navigation = useNavigation()
+  const insets     = useSafeAreaInsets()
+  const colors     = useVerityPalette()
+  const { user }   = useAuth()
+
+  const [companyName, setCompanyName] = useState<string>(slug)
+  const [messages, setMessages]       = useState<Message[]>([])
+  const [input, setInput]             = useState('')
+  const [loading, setLoading]         = useState(false)
+  const [contextLoaded, setContextLoaded] = useState(false)
+  const listRef = useRef<FlatList>(null)
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: `Afaqi · ${companyName}`,
+      headerTintColor: colors.accent,
+      headerStyle: { backgroundColor: colors.surfaceSolid },
+      headerTitleStyle: { fontFamily: font.semi, color: colors.ink, fontSize: 17 },
+    })
+  }, [navigation, companyName, colors])
+
+  useEffect(() => {
+    if (!slug) return
+    void fetchResearchCacheRow(slug).then((r) => {
+      if (r?.company_name) setCompanyName(r.company_name)
+      setContextLoaded(true)
+
+      // Seed a welcome message
+      const itemCount = r?.items?.length ?? 0
+      const welcome: Message = {
+        id: 'welcome',
+        role: 'assistant',
+        content: itemCount > 0
+          ? `I have ${itemCount} research source${itemCount === 1 ? '' : 's'} loaded for ${r?.company_name ?? slug}. What would you like to explore?`
+          : `No research has been run for ${slug} yet. Go back to the company profile and hit "Run research" first, then return here.`,
+        sources: [],
+      }
+      setMessages([welcome])
+    }).catch(() => {
+      setContextLoaded(true)
+    })
+  }, [slug])
+
+  const sendMessage = useCallback(async () => {
+    const text = input.trim()
+    if (!text || loading || !user) return
+
+    const userMsg: Message = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: text,
+    }
+    const history = [...messages, userMsg]
+    setMessages(history)
+    setInput('')
+    setLoading(true)
+
+    // Scroll to end
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100)
+
+    try {
+      // Build the conversation history (exclude the welcome message from context)
+      const apiMessages = history
+        .filter((m) => m.id !== 'welcome')
+        .map((m) => ({ role: m.role, content: m.content }))
+
+      const { data, error } = await supabase.functions.invoke('afaqi-chat', {
+        body: { slug, messages: apiMessages },
+      })
+
+      if (error) throw new Error(error.message ?? 'Afaqi error')
+
+      const assistantMsg: Message = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: data?.message ?? 'I had trouble processing that.',
+        sources: data?.sources ?? [],
+      }
+      setMessages((prev) => [...prev, assistantMsg])
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100)
+    } catch (e) {
+      const errMsg: Message = {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: `Something went wrong: ${e instanceof Error ? e.message : 'Unknown error'}. Please try again.`,
+        sources: [],
+      }
+      setMessages((prev) => [...prev, errMsg])
+    } finally {
+      setLoading(false)
+    }
+  }, [input, loading, messages, slug, user])
+
+  return (
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: colors.canvas }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={insets.top + 44}
+    >
+      {/* Context pill */}
+      <View style={[styles.contextPill, { backgroundColor: colors.accentSoft }]}>
+        <Text style={[styles.contextText, { color: colors.accent }]}>
+          Context: {companyName} research
+        </Text>
+      </View>
+
+      {/* Message list */}
+      <FlatList
+        ref={listRef}
+        data={messages}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={[styles.listContent, { paddingBottom: space.xl }]}
+        showsVerticalScrollIndicator={false}
+        renderItem={({ item }) =>
+          item.role === 'user' ? (
+            <UserBubble msg={item} colors={colors} />
+          ) : (
+            <AssistantBubble msg={item} colors={colors} />
+          )
+        }
+        ListFooterComponent={
+          loading ? <TypingIndicator colors={colors} /> : null
+        }
+        onContentSizeChange={() => {
+          if (loading) listRef.current?.scrollToEnd({ animated: true })
+        }}
+      />
+
+      {/* Input bar */}
+      <View
+        style={[
+          styles.inputBar,
+          {
+            backgroundColor: colors.surfaceSolid,
+            borderTopColor: colors.stroke,
+            paddingBottom: insets.bottom + space.sm,
+          },
+        ]}
+      >
+        <TextInput
+          style={[styles.input, { color: colors.ink, backgroundColor: colors.canvas }]}
+          placeholder={contextLoaded ? 'Ask about the research…' : 'Loading context…'}
+          placeholderTextColor={colors.inkSubtle}
+          value={input}
+          onChangeText={setInput}
+          onSubmitEditing={() => void sendMessage()}
+          returnKeyType="send"
+          multiline
+          maxLength={500}
+          editable={contextLoaded && !loading}
+        />
+        <Pressable
+          style={[
+            styles.sendBtn,
+            {
+              backgroundColor:
+                input.trim() && !loading ? colors.accent : colors.accentSoft,
+            },
+          ]}
+          onPress={() => void sendMessage()}
+          disabled={!input.trim() || loading}
+        >
+          <Text style={styles.sendIcon}>↑</Text>
+        </Pressable>
+      </View>
+    </KeyboardAvoidingView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+
+  contextPill: {
+    paddingHorizontal: space.lg,
+    paddingVertical: space.xs,
+    alignItems: 'center',
+  },
+  contextText: { fontFamily: font.medium, fontSize: 12 },
+
+  listContent: { paddingHorizontal: space.lg, paddingTop: space.md },
+
+  // User bubble
+  userBubbleRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: space.md,
+  },
+  userBubble: {
+    maxWidth: '78%',
+    borderRadius: radius.lg,
+    borderBottomRightRadius: 4,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm + 2,
+  },
+  userBubbleText: { fontFamily: font.regular, fontSize: 15, color: '#fff', lineHeight: 21 },
+
+  // Assistant bubble
+  assistantRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: space.md,
+    gap: space.sm,
+  },
+  assistantAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(47,74,216,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  avatarText:  { fontFamily: font.bold, fontSize: 13 },
+  assistantContent: { flex: 1, minWidth: 0 },
+  assistantBubble: {
+    borderRadius: radius.lg,
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm + 2,
+  },
+  assistantText: { fontFamily: font.regular, fontSize: 15, lineHeight: 22 },
+
+  sourcesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space.xs,
+    marginTop: space.xs,
+  },
+  sourceChip: {
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: 3,
+    maxWidth: 160,
+  },
+  sourceChipText: { fontFamily: font.medium, fontSize: 11 },
+
+  // Input bar
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: space.md,
+    paddingTop: space.sm,
+    gap: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  input: {
+    flex: 1,
+    fontFamily: font.regular,
+    fontSize: 15,
+    borderRadius: radius.lg,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm + 2,
+    maxHeight: 100,
+    lineHeight: 21,
+  },
+  sendBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  sendIcon: { fontFamily: font.bold, fontSize: 16, color: '#fff' },
+})

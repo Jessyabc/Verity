@@ -56,6 +56,8 @@ function SourcePill({ type }: { type: string }) {
 
 // ─── Digest section ───────────────────────────────────────────────────────
 
+const DIGEST_PREVIEW_LINES = 4
+
 type DigestProps = {
   digestText: string
   sources: DigestSource[]
@@ -64,6 +66,8 @@ type DigestProps = {
 }
 
 function DigestSection({ digestText, sources, generating, colors }: DigestProps) {
+  const [expanded, setExpanded] = useState(false)
+
   if (generating && !digestText) {
     return (
       <View style={styles.digestGenerating}>
@@ -84,9 +88,23 @@ function DigestSection({ digestText, sources, generating, colors }: DigestProps)
         {generating ? <ActivityIndicator size="small" color={colors.accent} /> : null}
       </View>
       <Text style={[styles.digestTitle, { color: colors.ink }]}>{"What's happening"}</Text>
-      <Text style={[styles.digestBody, { color: colors.inkMuted }]}>{digestText}</Text>
 
-      {sources.length > 0 ? (
+      <Text
+        style={[styles.digestBody, { color: colors.inkMuted }]}
+        numberOfLines={expanded ? undefined : DIGEST_PREVIEW_LINES}
+      >
+        {digestText}
+      </Text>
+
+      {/* Show more / less toggle */}
+      <Pressable onPress={() => setExpanded((v) => !v)} style={styles.digestExpandToggle}>
+        <Text style={[styles.digestExpandText, { color: colors.accent }]}>
+          {expanded ? 'Show less ↑' : 'Read full analysis ↓'}
+        </Text>
+      </Pressable>
+
+      {/* Sources — only visible when expanded */}
+      {expanded && sources.length > 0 ? (
         <View style={styles.sourcesContainer}>
           <Text style={[styles.sourcesKicker, { color: colors.inkSubtle }]}>SOURCES</Text>
           {sources.map((s, i) => (
@@ -401,6 +419,8 @@ const styles = StyleSheet.create({
   },
   sourceTitle:     { flex: 1, fontFamily: font.semi, fontSize: 14, lineHeight: 19 },
   sourceRelevance: { fontFamily: font.regular, fontSize: 13, lineHeight: 18, marginTop: 4 },
+  digestExpandToggle: { marginTop: space.sm },
+  digestExpandText:   { fontFamily: font.semi, fontSize: 13 },
   disclaimer: {
     fontFamily: font.regular,
     fontSize: 11,

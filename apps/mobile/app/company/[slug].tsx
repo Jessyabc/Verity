@@ -1,11 +1,12 @@
 /**
  * Company profile screen.
  *
- * Design:
- *  - Floating Liquid Glass "+" / "★" FAB pinned top-right — add/remove watchlist.
- *  - Business summary is the primary content card.
- *  - Research is framed as the clear next action, not a settings menu item.
- *  - Tracked documents scroll below.
+ * Layout (top → bottom):
+ *  1. Identity card — logo, name, ticker, truncated summary
+ *  2. "Read full analysis →" link (if research exists)
+ *  3. Tracked documents
+ *  4. Research headlines — grouped by story, split into Company / World narratives
+ *  5. Refresh research CTA + Ask Afaqi CTA
  */
 
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
@@ -35,8 +36,24 @@ import {
   fetchWatchlistSlugs,
   insertWatchlistSlug,
 } from '@/lib/watchlistApi'
-import { fetchResearchCacheRow, type CompanyResearchRow } from '@/lib/researchCache'
+import {
+  fetchResearchCacheRow,
+  type CompanyResearchRow,
+  type ResearchNewsItem,
+} from '@/lib/researchCache'
 import { invokeResearchCompany } from '@/lib/researchRefresh'
+import {
+  groupHeadlines,
+  classifyItem,
+  type HeadlineCluster,
+} from '@/lib/headlineGrouping'
+import {
+  fetchSavedHeadlines,
+  saveHeadline,
+  unsaveHeadline,
+  savedUrlSet,
+  type SavedHeadlineRow,
+} from '@/lib/savedHeadlines'
 import { supabase } from '@/lib/supabase'
 import { font, radius, space } from '@/constants/theme'
 
@@ -44,17 +61,143 @@ function safeHostname(url: string): string {
   try { return new URL(url).hostname } catch { return url }
 }
 
-// ─── Research section ─────────────────────────────────────────────────────
+// ─── Single headline cluster row ──────────────────────────────────────────────
 
-type ResearchSectionProps = {
-  research: CompanyResearchRow | null
-  busy: boolean
-  onRefresh: () => void
+type ClusterRowProps = {
+  cluster: HeadlineCluster
+  savedUrls: Set<string>
+  savedRows: SavedHeadlineRow[]
+  onSaveToggle: (item: ResearchNewsItem, savedId?: string) => void
   colors: ReturnType<typeof useVerityPalette>
 }
 
-function ResearchSection({ research, busy, onRefresh, colors }: ResearchSectionProps) {
+function ClusterRow({ cluster, savedUrls, savedRows, onSaveToggle, colors }: ClusterRowProps) {
+  const [expanded, setExpanded] = useState(false)
+  const { primary, extras, sourceCount } = cluster
+  const isSaved = savedUrls.has(primary.url)
+  const savedRow = savedRows.find((r) => r.url === primary.url)
+
+  return (
+    <View style={[styles.clusterBlock, { borderTopColor: colors.stroke }]}>
+      {/* Primary headline */}
+      <Pressable onPress={() => void Linking.openURL(primary.url)} style={styles.clusterMain}>
+        <View style={styles.clusterTitleRow}>
+          <Text style={[styles.clusterTitle, { color: colors.accent }]} numberOfLines={2}>
+            {primary.title}
+          </Text>
+          <Pressable
+            style={styles.bookmarkBtn}
+            onPress={() => onSaveToggle(primary, savedRow?.id)}
+            hitSlop={10}
+          >
+            <Text style={[styles.bookmarkIcon, { color: isSaved ? colors.accent : colors.inkSubtle }]}>
+              {isSaved ? '✦' : '✧'}
+            </Text>
+          </Pressable>
+        </View>
+        {primary.snippet ? (
+          <Text style={[styles.clusterSnippet, { color: colors.inkMuted }]} numberOfLines={2}>
+            {primary.snippet}
+          </Text>
+        ) : null}
+        <Text style={[styles.clusterMeta, { color: colors.inkSubtle }]} numberOfLines={1}>
+          {primary.source ?? safeHostname(primary.url)}
+          {primary.published_at ? ` · ${formatAgo(primary.published_at)}` : ''}
+        </Text>
+      </Pressable>
+
+      {/* N-sources badge + expand toggle */}
+      {sourceCount > 1 ? (
+        <Pressable style={styles.expandRow} onPress={() => setExpanded((v) => !v)}>
+          <View style={[styles.sourceBadge, { backgroundColor: colors.accentSoft }]}>
+            <Text style={[styles.sourceBadgeText, { color: colors.accent }]}>
+              {sourceCount} sources
+            </Text>
+          </View>
+          <Text style={[styles.expandToggle, { color: colors.inkSubtle }]}>
+            {expanded ? 'Show less ↑' : 'Show all ↓'}
+          </Text>
+        </Pressable>
+      ) : null}
+
+      {/* Extra sources shown when expanded */}
+      {expanded
+        ? extras.map((extra, i) => (
+            <Pressable
+              key={`extra-${i}`}
+              style={[styles.extraRow, { borderTopColor: colors.stroke }]}
+              onPress={() => void Linking.openURL(extra.url)}
+            >
+              <Text style={[styles.extraTitle, { color: colors.accent }]} numberOfLines={2}>
+                {extra.title}
+              </Text>
+              <Text style={[styles.extraMeta, { color: colors.inkSubtle }]} numberOfLines={1}>
+                {extra.source ?? safeHostname(extra.url)}
+              </Text>
+            </Pressable>
+          ))
+        : null}
+    </View>
+  )
+}
+
+// ─── Narrative section (Company Says / World Says) ────────────────────────────
+
+type NarrativeSectionProps = {
+  label: string
+  dotColor: string
+  clusters: HeadlineCluster[]
+  savedUrls: Set<string>
+  savedRows: SavedHeadlineRow[]
+  onSaveToggle: (item: ResearchNewsItem, savedId?: string) => void
+  colors: ReturnType<typeof useVerityPalette>
+}
+
+function NarrativeSection({
+  label, dotColor, clusters, savedUrls, savedRows, onSaveToggle, colors,
+}: NarrativeSectionProps) {
+  if (clusters.length === 0) return null
+  return (
+    <View style={styles.narrativeSection}>
+      <View style={styles.narrativeHeader}>
+        <View style={[styles.narrativeDot, { backgroundColor: dotColor }]} />
+        <Text style={[styles.narrativeLabel, { color: colors.inkSubtle }]}>{label}</Text>
+      </View>
+      {clusters.map((cluster, i) => (
+        <ClusterRow
+          key={`${cluster.primary.url}-${i}`}
+          cluster={cluster}
+          savedUrls={savedUrls}
+          savedRows={savedRows}
+          onSaveToggle={onSaveToggle}
+          colors={colors}
+        />
+      ))}
+    </View>
+  )
+}
+
+// ─── Research section ──────────────────────────────────────────────────────────
+
+type ResearchSectionProps = {
+  research: CompanyResearchRow | null
+  savedUrls: Set<string>
+  savedRows: SavedHeadlineRow[]
+  slug: string
+  busy: boolean
+  onRefresh: () => void
+  onSaveToggle: (item: ResearchNewsItem, savedId?: string) => void
+  colors: ReturnType<typeof useVerityPalette>
+}
+
+function ResearchSection({
+  research, savedUrls, savedRows, slug, busy, onRefresh, onSaveToggle, colors,
+}: ResearchSectionProps) {
+  const router = useRouter()
   const items = research?.items ?? []
+
+  const officialClusters = groupHeadlines(items.filter((i) => classifyItem(i) === 'official'))
+  const externalClusters = groupHeadlines(items.filter((i) => classifyItem(i) === 'external'))
 
   return (
     <View style={styles.section}>
@@ -78,31 +221,37 @@ function ResearchSection({ research, busy, onRefresh, colors }: ResearchSectionP
           <Text style={[styles.warn, { color: colors.amber }]}>{research.error}</Text>
         ) : null}
 
-        {items.slice(0, 5).map((item, i) => (
-          <Pressable
-            key={`${item.url}-${i}`}
-            style={[styles.researchRow, { borderTopColor: colors.stroke }]}
-            onPress={() => void Linking.openURL(item.url)}
-          >
-            <Text style={[styles.researchTitle, { color: colors.accent }]} numberOfLines={2}>
-              {item.title}
-            </Text>
-            {item.snippet ? (
-              <Text style={[styles.researchSnippet, { color: colors.inkMuted }]} numberOfLines={2}>
-                {item.snippet}
-              </Text>
-            ) : null}
-            <Text style={[styles.researchSource, { color: colors.inkSubtle }]} numberOfLines={1}>
-              {item.source ?? safeHostname(item.url)}
-            </Text>
-          </Pressable>
-        ))}
+        {items.length > 0 ? (
+          <>
+            <NarrativeSection
+              label="WHAT THE COMPANY SAYS"
+              dotColor="#0f766e"
+              clusters={officialClusters}
+              savedUrls={savedUrls}
+              savedRows={savedRows}
+              onSaveToggle={onSaveToggle}
+              colors={colors}
+            />
+            <NarrativeSection
+              label="WHAT THE WORLD SAYS"
+              dotColor="#475569"
+              clusters={externalClusters}
+              savedUrls={savedUrls}
+              savedRows={savedRows}
+              onSaveToggle={onSaveToggle}
+              colors={colors}
+            />
+          </>
+        ) : null}
 
-        {/* Research CTA — the next clear action */}
+        {/* Refresh research CTA */}
         <Pressable
           style={[
             styles.researchCta,
-            { backgroundColor: busy ? colors.accentSoft : colors.accent },
+            {
+              backgroundColor: busy ? colors.accentSoft : colors.accent,
+              marginTop: items.length > 0 ? space.lg : space.md,
+            },
           ]}
           onPress={onRefresh}
           disabled={busy}
@@ -119,6 +268,19 @@ function ResearchSection({ research, busy, onRefresh, colors }: ResearchSectionP
           )}
         </Pressable>
 
+        {/* Ask Afaqi CTA */}
+        {items.length > 0 ? (
+          <Pressable
+            style={[styles.afaqiCta, { borderColor: colors.accent }]}
+            onPress={() => router.push(`/chat/${slug}`)}
+          >
+            <Text style={[styles.afaqiCtaLabel, { color: colors.accent }]}>Afaqi</Text>
+            <Text style={[styles.afaqiCtaText, { color: colors.accent }]}>
+              Ask about this research
+            </Text>
+          </Pressable>
+        ) : null}
+
         <Text style={[styles.disclaimer, { color: colors.inkSubtle }]}>
           Not investment advice · AI may be incomplete
         </Text>
@@ -127,7 +289,7 @@ function ResearchSection({ research, busy, onRefresh, colors }: ResearchSectionP
   )
 }
 
-// ─── Main screen ─────────────────────────────────────────────────────────
+// ─── Main screen ───────────────────────────────────────────────────────────────
 
 export default function CompanyScreen() {
   const { slug: slugParam } = useLocalSearchParams<{ slug: string }>()
@@ -137,14 +299,17 @@ export default function CompanyScreen() {
   const colors     = useVerityPalette()
   const { user }   = useAuth()
 
-  const [company, setCompany]       = useState<CompanyRow | null>(null)
-  const [documents, setDocuments]   = useState<DbTrackedDocument[]>([])
-  const [research, setResearch]     = useState<CompanyResearchRow | null>(null)
-  const [loading, setLoading]       = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
+  const [company, setCompany]           = useState<CompanyRow | null>(null)
+  const [documents, setDocuments]       = useState<DbTrackedDocument[]>([])
+  const [research, setResearch]         = useState<CompanyResearchRow | null>(null)
+  const [savedRows, setSavedRows]       = useState<SavedHeadlineRow[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [refreshing, setRefreshing]     = useState(false)
   const [researchBusy, setResearchBusy] = useState(false)
   const [onWatchlist, setOnWatchlist]   = useState(false)
-  const [error, setError]           = useState<string | null>(null)
+  const [error, setError]               = useState<string | null>(null)
+
+  const savedUrls = savedUrlSet(savedRows)
 
   const load = useCallback(async () => {
     if (!slug) { setLoading(false); return }
@@ -159,6 +324,14 @@ export default function CompanyScreen() {
       setDocuments(bundle.documents)
       setResearch(r)
       setOnWatchlist(wl.includes(slug))
+
+      if (user) {
+        try {
+          setSavedRows(await fetchSavedHeadlines(slug))
+        } catch {
+          // knowledge bank is non-critical
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -213,7 +386,22 @@ export default function CompanyScreen() {
     }
   }
 
-  // ── Loading / error states ──
+  const handleSaveToggle = async (item: ResearchNewsItem, savedId?: string) => {
+    if (!user) return
+    try {
+      if (savedId) {
+        await unsaveHeadline(savedId)
+        setSavedRows((prev) => prev.filter((r) => r.id !== savedId))
+      } else {
+        await saveHeadline(user.id, slug, item)
+        setSavedRows(await fetchSavedHeadlines(slug))
+      }
+    } catch {
+      // silent — knowledge bank is non-critical
+    }
+  }
+
+  // ── Loading / error states ──────────────────────────────────────────────────
 
   if (!slug) {
     return (
@@ -237,9 +425,12 @@ export default function CompanyScreen() {
         <Text style={[styles.kicker, { color: colors.inkSubtle }]}>COMPANY</Text>
         <Text style={[styles.h1, { color: colors.ink }]}>Not found</Text>
         <Text style={[styles.muted, { color: colors.inkMuted, marginTop: space.md, textAlign: 'center' }]}>
-          {"This company isn't in your database yet. Add it via the admin panel or wait for the next import."}
+          {"This company isn't in your database yet."}
         </Text>
-        <Pressable style={[styles.backBtn, { backgroundColor: colors.accent }]} onPress={() => router.back()}>
+        <Pressable
+          style={[styles.backBtn, { backgroundColor: colors.accent }]}
+          onPress={() => router.back()}
+        >
           <Text style={styles.backBtnText}>Go back</Text>
         </Pressable>
       </View>
@@ -247,7 +438,7 @@ export default function CompanyScreen() {
   }
 
   const researchItems = research?.items ?? []
-  const summaryText = researchItems[0]?.snippet ?? null
+  const summaryText   = researchItems[0]?.snippet ?? company.tagline ?? null
 
   return (
     <View style={[styles.container, { backgroundColor: colors.canvas }]}>
@@ -255,7 +446,11 @@ export default function CompanyScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollInner}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={colors.accent} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor={colors.accent}
+          />
         }
         showsVerticalScrollIndicator={false}
       >
@@ -280,15 +475,21 @@ export default function CompanyScreen() {
             </View>
           </View>
 
-          {/* Business summary from research */}
           {summaryText ? (
-            <Text style={[styles.summary, { color: colors.inkMuted }]} numberOfLines={4}>
+            <Text style={[styles.summary, { color: colors.inkMuted }]} numberOfLines={3}>
               {summaryText}
             </Text>
-          ) : company.tagline ? (
-            <Text style={[styles.summary, { color: colors.inkMuted }]}>
-              {company.tagline}
-            </Text>
+          ) : null}
+
+          {researchItems.length > 0 ? (
+            <Pressable
+              style={styles.readerLink}
+              onPress={() => router.push(`/reader/${slug}`)}
+            >
+              <Text style={[styles.readerLinkText, { color: colors.accent }]}>
+                Read full analysis →
+              </Text>
+            </Pressable>
           ) : null}
         </View>
 
@@ -320,14 +521,17 @@ export default function CompanyScreen() {
           </View>
         ) : null}
 
-        {/* ── Research — the next action ── */}
+        {/* ── Research headlines ── */}
         <ResearchSection
           research={research}
+          savedUrls={savedUrls}
+          savedRows={savedRows}
+          slug={slug}
           busy={researchBusy}
           onRefresh={() => void runResearch()}
+          onSaveToggle={handleSaveToggle}
           colors={colors}
         />
-
       </ScrollView>
 
       {/* ── Floating Liquid Glass watchlist button ── */}
@@ -343,23 +547,22 @@ export default function CompanyScreen() {
   )
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────
+// ─── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scroll:    { flex: 1 },
+  container:   { flex: 1 },
+  scroll:      { flex: 1 },
   scrollInner: { padding: space.lg, paddingBottom: space.xxl + 20 },
-  center:    { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  muted:     { fontFamily: font.regular, fontSize: 15 },
+  center:      { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  muted:       { fontFamily: font.regular, fontSize: 15 },
 
-  // Identity
   card: {
     borderRadius: radius.lg,
     borderWidth: 1,
     padding: space.lg,
     marginBottom: space.lg,
   },
-  identityRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
+  identityRow:  { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
   identityText: { flex: 1, minWidth: 0 },
   h1:     { fontFamily: font.semi, fontSize: 24, letterSpacing: -0.5 },
   kicker: { fontFamily: font.medium, fontSize: 11, letterSpacing: 1.8 },
@@ -370,8 +573,9 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: space.md,
   },
+  readerLink:     { marginTop: space.sm },
+  readerLinkText: { fontFamily: font.semi, fontSize: 14 },
 
-  // Section
   section: { marginBottom: space.lg },
   sectionKicker: {
     fontFamily: font.medium,
@@ -386,9 +590,8 @@ const styles = StyleSheet.create({
     marginBottom: space.xs,
   },
   sectionTitle: { fontFamily: font.semi, fontSize: 18, marginTop: 2 },
-  meta:         { fontFamily: font.regular, fontSize: 13, marginTop: space.xs },
-  warn:         { fontFamily: font.regular, fontSize: 13, marginTop: space.xs },
-  disclaimer:   { fontFamily: font.regular, fontSize: 11, marginTop: space.md, opacity: 0.6, textAlign: 'center' },
+  meta:  { fontFamily: font.regular, fontSize: 13, marginTop: space.xs },
+  warn:  { fontFamily: font.regular, fontSize: 13, marginTop: space.xs },
 
   // Documents
   docRow: {
@@ -400,34 +603,97 @@ const styles = StyleSheet.create({
   docSnippet: { fontFamily: font.regular, fontSize: 13, lineHeight: 18, marginTop: 4 },
   docMeta:    { fontFamily: font.regular, fontSize: 12, marginTop: space.xs },
 
-  // Research
-  researchRow: {
-    paddingVertical: space.md,
+  // Narrative sections
+  narrativeSection: { marginTop: space.md },
+  narrativeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    marginBottom: space.sm,
+  },
+  narrativeDot:   { width: 7, height: 7, borderRadius: 4 },
+  narrativeLabel: { fontFamily: font.medium, fontSize: 10, letterSpacing: 1.5 },
+
+  // Headline cluster
+  clusterBlock: {
+    paddingTop: space.md,
     borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: space.xs,
+  },
+  clusterMain:     {},
+  clusterTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: space.sm,
+  },
+  clusterTitle: {
+    flex: 1,
+    fontFamily: font.semi,
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  bookmarkBtn:  { paddingTop: 2 },
+  bookmarkIcon: { fontSize: 16 },
+  clusterSnippet: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 4,
+  },
+  clusterMeta: { fontFamily: font.regular, fontSize: 12, marginTop: space.xs },
+
+  expandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
     marginTop: space.sm,
   },
-  researchTitle:   { fontFamily: font.semi, fontSize: 15, lineHeight: 20 },
-  researchSnippet: { fontFamily: font.regular, fontSize: 14, lineHeight: 20, marginTop: 4 },
-  researchSource:  { fontFamily: font.regular, fontSize: 12, marginTop: 4 },
+  sourceBadge:     { borderRadius: 10, paddingHorizontal: space.sm, paddingVertical: 3 },
+  sourceBadgeText: { fontFamily: font.medium, fontSize: 11 },
+  expandToggle:    { fontFamily: font.regular, fontSize: 12 },
 
-  // CTA
+  extraRow: {
+    paddingVertical: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: space.xs,
+    paddingLeft: space.md,
+  },
+  extraTitle: { fontFamily: font.regular, fontSize: 13, lineHeight: 18 },
+  extraMeta:  { fontFamily: font.regular, fontSize: 11, marginTop: 2 },
+
+  // CTAs
   researchCta: {
-    marginTop: space.lg,
     paddingVertical: space.md + 2,
     borderRadius: radius.sm,
     alignItems: 'center',
   },
-  ctaRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  ctaRow:  { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   ctaText: { fontFamily: font.semi, color: '#fff', fontSize: 16 },
 
-  // Floating FAB
-  fab: {
-    position: 'absolute',
-    top: space.md,
-    right: space.lg,
+  afaqiCta: {
+    marginTop: space.sm,
+    paddingVertical: space.md,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: space.sm,
+  },
+  afaqiCtaLabel: { fontFamily: font.medium, fontSize: 11, letterSpacing: 1.4 },
+  afaqiCtaText:  { fontFamily: font.semi, fontSize: 15 },
+
+  disclaimer: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    marginTop: space.md,
+    opacity: 0.6,
+    textAlign: 'center',
   },
 
-  // Not found
+  fab: { position: 'absolute', top: space.md, right: space.lg },
+
   backBtn: {
     marginTop: space.xl,
     paddingVertical: space.md,
