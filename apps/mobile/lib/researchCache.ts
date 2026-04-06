@@ -18,14 +18,7 @@ export type CompanyResearchRow = {
   model: string | null
 }
 
-export async function fetchResearchCacheRow(slug: string): Promise<CompanyResearchRow | null> {
-  const { data, error } = await supabase
-    .from('company_research_cache')
-    .select('slug, company_name, ticker, items, fetched_at, error, model')
-    .eq('slug', slug)
-    .maybeSingle()
-  if (error) throw error
-  if (!data) return null
+function rowFromCache(data: Record<string, unknown>): CompanyResearchRow {
   const items = Array.isArray(data.items) ? (data.items as ResearchNewsItem[]) : []
   return {
     slug: data.slug as string,
@@ -36,4 +29,62 @@ export async function fetchResearchCacheRow(slug: string): Promise<CompanyResear
     error: (data.error as string | null) ?? null,
     model: (data.model as string | null) ?? null,
   }
+}
+
+export async function fetchResearchCacheRow(slug: string): Promise<CompanyResearchRow | null> {
+  const { data, error } = await supabase
+    .from('company_research_cache')
+    .select('slug, company_name, ticker, items, fetched_at, error, model')
+    .eq('slug', slug)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  return rowFromCache(data as Record<string, unknown>)
+}
+
+/** Batched cache read for home / watchlist feeds. */
+export async function fetchResearchCacheRowsForSlugs(slugs: string[]): Promise<CompanyResearchRow[]> {
+  if (slugs.length === 0) return []
+  const { data, error } = await supabase
+    .from('company_research_cache')
+    .select('slug, company_name, ticker, items, fetched_at, error, model')
+    .in('slug', slugs)
+    .order('fetched_at', { ascending: false })
+  if (error) throw error
+  return ((data ?? []) as Record<string, unknown>[]).map(rowFromCache)
+}
+
+export type WatchlistResearchHighlight = {
+  slug: string
+  companyName: string
+  ticker: string | null
+  fetchedAt: string
+  item: ResearchNewsItem
+}
+
+/** Flatten cached Perplexity items into a single watchlist feed (newest companies first). */
+export function flattenWatchlistResearchHighlights(
+  rows: CompanyResearchRow[],
+  options?: { itemsPerCompany?: number; maxTotal?: number },
+): WatchlistResearchHighlight[] {
+  const per = options?.itemsPerCompany ?? 2
+  const max = options?.maxTotal ?? 12
+  const sorted = [...rows].sort(
+    (a, b) => new Date(b.fetched_at).getTime() - new Date(a.fetched_at).getTime(),
+  )
+  const out: WatchlistResearchHighlight[] = []
+  for (const row of sorted) {
+    for (const item of row.items.slice(0, per)) {
+      if (!item?.title?.trim() || !item?.url?.trim()) continue
+      out.push({
+        slug: row.slug,
+        companyName: row.company_name,
+        ticker: row.ticker,
+        fetchedAt: row.fetched_at,
+        item,
+      })
+      if (out.length >= max) return out
+    }
+  }
+  return out
 }

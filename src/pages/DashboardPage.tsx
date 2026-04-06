@@ -20,11 +20,19 @@ import {
   formatAgo,
   shortDocumentTitle,
 } from '@/lib/supabase/monitoringQueries'
+import {
+  fetchResearchCacheRowsForSlugs,
+  flattenWatchlistResearchHighlights,
+  type WatchlistResearchHighlight,
+} from '@/lib/supabase/researchQueries'
 
 export function DashboardPage() {
   const { slugs } = useWatchlist()
   const [researchBusy, setResearchBusy] = useState(false)
   const [researchErr, setResearchErr] = useState<string | null>(null)
+  const [researchDigest, setResearchDigest] = useState<WatchlistResearchHighlight[]>([])
+  const [researchDigestLoading, setResearchDigestLoading] = useState(false)
+  const [researchDigestTick, setResearchDigestTick] = useState(0)
   const { isRead } = useReadUpdates()
   const pilotUpdates = getRecentUpdatesForSlugs(slugs, 8)
   const {
@@ -48,6 +56,18 @@ export function DashboardPage() {
       setInventoryCompanies([])
     })
   }, [inventorySlugs])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured() || slugs.length === 0) {
+      setResearchDigest([])
+      return
+    }
+    setResearchDigestLoading(true)
+    void fetchResearchCacheRowsForSlugs(slugs)
+      .then((rows) => setResearchDigest(flattenWatchlistResearchHighlights(rows)))
+      .catch(() => setResearchDigest([]))
+      .finally(() => setResearchDigestLoading(false))
+  }, [slugs, researchDigestTick])
 
   const hasWatchlist = slugs.length > 0
 
@@ -82,6 +102,7 @@ export function DashboardPage() {
           throw new Error(String(data.error))
         }
       }
+      setResearchDigestTick((t) => t + 1)
     } catch (e: unknown) {
       setResearchErr(e instanceof Error ? e.message : String(e))
     } finally {
@@ -238,14 +259,78 @@ export function DashboardPage() {
             </ul>
           </div>
 
-          {/* ── Latest documents feed ── */}
+          {/* ── AI research digest (Perplexity cache) ── */}
+          {isSupabaseConfigured() ? (
+            <div>
+              <h2 className="text-[13px] font-medium uppercase tracking-[0.16em] text-ink-subtle">
+                Research snapshot (AI)
+              </h2>
+              <p className="mt-1 text-[13px] text-ink-subtle">
+                Top items from cached Perplexity runs per watchlist company — not the same as monitored
+                pages below. Use <span className="font-medium text-ink-muted">Refresh research</span>{' '}
+                above to refill.
+              </p>
+              {researchDigestLoading ? (
+                <p className="mt-4 text-[14px] text-ink-muted" role="status">
+                  Loading research cache…
+                </p>
+              ) : null}
+              {!researchDigestLoading && researchDigest.length === 0 ? (
+                <Card className="mt-4 border-dashed border-black/[0.1] bg-white/45 shadow-none">
+                  <p className="text-[14px] leading-relaxed text-ink-muted">
+                    No research cache yet — open a company and refresh research, or use{' '}
+                    <span className="font-mono text-[12px]">Refresh research</span> here.
+                  </p>
+                </Card>
+              ) : null}
+              {researchDigest.length > 0 ? (
+                <ul className="mt-4 space-y-3">
+                  {researchDigest.map((h, i) => (
+                    <li key={`${h.slug}-${h.item.url}-${i}`}>
+                      <Card
+                        padding="sm"
+                        className="transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:shadow-[0_12px_40px_rgba(12,13,17,0.08)]"
+                      >
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
+                          <Link
+                            to={`/app/company/${h.slug}`}
+                            className="text-accent hover:underline underline-offset-2"
+                          >
+                            {h.companyName}
+                          </Link>
+                          {' · '}
+                          {formatAgo(h.fetchedAt)}
+                          {h.item.source ? ` · ${h.item.source}` : null}
+                        </p>
+                        <a
+                          href={h.item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 block text-[15px] font-medium tracking-tight text-ink hover:text-accent"
+                        >
+                          {h.item.title}
+                        </a>
+                        {h.item.snippet?.trim() ? (
+                          <p className="mt-2 line-clamp-3 text-[14px] leading-relaxed text-ink-muted">
+                            {h.item.snippet}
+                          </p>
+                        ) : null}
+                      </Card>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* ── Monitored pages (tracked_documents) ── */}
           <div>
             <h2 className="text-[13px] font-medium uppercase tracking-[0.16em] text-ink-subtle">
-              Latest from your watchlist
+              Monitored pages
             </h2>
             <p className="mt-1 text-[13px] text-ink-subtle">
               {isSupabaseConfigured()
-                ? 'Live — linked directly to source documents on company websites.'
+                ? 'Live URLs from your sources (EDGAR, IR, …). Summaries appear after enrich runs on each tracked page.'
                 : 'Bundled pilot data — connect Supabase to see live documents.'}
             </p>
 

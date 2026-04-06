@@ -22,6 +22,11 @@ import { shortDocumentTitle } from '@/lib/documentTitles'
 import { formatAgo } from '@/lib/format'
 import type { RecentDbDoc } from '@/lib/recentDocuments'
 import { fetchRecentDocumentsForSlugs } from '@/lib/recentDocuments'
+import {
+  fetchResearchCacheRowsForSlugs,
+  flattenWatchlistResearchHighlights,
+  type WatchlistResearchHighlight,
+} from '@/lib/researchCache'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import { syncSessionForApi } from '@/lib/syncSessionForApi'
 import { fetchWatchlistSlugs } from '@/lib/watchlistApi'
@@ -37,6 +42,8 @@ type HeaderProps = {
   onSignOut: () => void
   recentDocs: RecentDbDoc[]
   recentLoading: boolean
+  researchHighlights: WatchlistResearchHighlight[]
+  researchLoading: boolean
   onOpenCompany: (slug: string) => void
 }
 
@@ -50,6 +57,8 @@ function SearchTabHeader({
   onSignOut,
   recentDocs,
   recentLoading,
+  researchHighlights,
+  researchLoading,
   onOpenCompany,
 }: HeaderProps) {
   const colors = useVerityPalette()
@@ -61,7 +70,8 @@ function SearchTabHeader({
         <Text style={[styles.kicker, { color: colors.inkSubtle }]}>VERITY MONITOR</Text>
         <Text style={[styles.h1, { color: colors.ink }]}>Companies</Text>
         <Text style={[styles.lede, { color: colors.inkMuted }]}>
-          Search your universe, open profiles, and skim the latest documents from your watchlist.
+          Search your universe, then skim monitored pages and AI research snapshots for your watchlist
+          (two separate feeds below).
         </Text>
         <View style={styles.accountRow}>
           <Text style={[styles.email, { color: colors.inkMuted }]} numberOfLines={1}>
@@ -98,7 +108,10 @@ function SearchTabHeader({
 
       <View style={styles.recentSection}>
         <Text style={[styles.recentKicker, { color: colors.inkSubtle }]}>FROM YOUR WATCHLIST</Text>
-        <Text style={[styles.recentTitle, { color: colors.ink }]}>Recent updates</Text>
+        <Text style={[styles.recentTitle, { color: colors.ink }]}>Monitored pages</Text>
+        <Text style={[styles.recentSub, { color: colors.inkMuted }]}>
+          Fetched URLs (EDGAR, IR, etc.) — summaries appear after the enrich job runs on each page.
+        </Text>
         {!user ? (
           <Text style={[styles.recentHint, { color: colors.inkMuted }]}>
             Sign in and add companies to your watchlist to see new filings and pages here.
@@ -138,6 +151,50 @@ function SearchTabHeader({
         )}
       </View>
 
+      <View style={styles.recentSection}>
+        <Text style={[styles.recentKicker, { color: colors.inkSubtle }]}>FROM YOUR WATCHLIST</Text>
+        <Text style={[styles.recentTitle, { color: colors.ink }]}>Research snapshot (AI)</Text>
+        <Text style={[styles.recentSub, { color: colors.inkMuted }]}>
+          From Perplexity cache per company — open a profile and tap Refresh to update. Not the same
+          as monitored pages above.
+        </Text>
+        {!user ? (
+          <Text style={[styles.recentHint, { color: colors.inkMuted }]}>Sign in to see cached research.</Text>
+        ) : researchLoading && researchHighlights.length === 0 ? (
+          <ActivityIndicator color={colors.accent} style={{ marginTop: space.md }} />
+        ) : researchHighlights.length === 0 ? (
+          <Text style={[styles.recentHint, { color: colors.inkMuted }]}>
+            No research cache yet — open a watchlist company, use Refresh under Research & news, or
+            run research from the web dashboard.
+          </Text>
+        ) : (
+          researchHighlights.map((h, i) => (
+            <View
+              key={`${h.slug}-${h.item.url}-${i}`}
+              style={[styles.recentRow, { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke }]}
+            >
+              <Pressable onPress={() => onOpenCompany(h.slug)}>
+                <Text style={[styles.recentCompany, { color: colors.accent }]}>{h.companyName}</Text>
+              </Pressable>
+              <Pressable onPress={() => void Linking.openURL(h.item.url)}>
+                <Text style={[styles.recentDocTitle, { color: colors.ink }]} numberOfLines={2}>
+                  {h.item.title}
+                </Text>
+                {h.item.snippet ? (
+                  <Text style={[styles.recentSnippet, { color: colors.inkMuted }]} numberOfLines={3}>
+                    {h.item.snippet}
+                  </Text>
+                ) : null}
+                <Text style={[styles.recentMeta, { color: colors.inkSubtle }]}>
+                  {formatAgo(h.fetchedAt)}
+                  {h.item.source ? ` · ${h.item.source}` : ''}
+                </Text>
+              </Pressable>
+            </View>
+          ))
+        )}
+      </View>
+
       <Text style={[styles.resultsKicker, { color: colors.inkSubtle }]}>SEARCH RESULTS</Text>
     </View>
   )
@@ -155,6 +212,8 @@ export default function HomeScreen() {
   const [searchError, setSearchError] = useState<string | null>(null)
   const [recentDocs, setRecentDocs] = useState<RecentDbDoc[]>([])
   const [recentLoading, setRecentLoading] = useState(false)
+  const [researchHighlights, setResearchHighlights] = useState<WatchlistResearchHighlight[]>([])
+  const [researchLoading, setResearchLoading] = useState(false)
 
   const runSearch = useCallback(async (q: string, showMainSpinner = true) => {
     if (!isSupabaseConfigured()) return
@@ -174,18 +233,26 @@ export default function HomeScreen() {
   const loadRecent = useCallback(async () => {
     if (!user) {
       setRecentDocs([])
+      setResearchHighlights([])
       return
     }
     setRecentLoading(true)
+    setResearchLoading(true)
     try {
       await syncSessionForApi()
       const slugs = await fetchWatchlistSlugs(supabase)
-      const docs = await fetchRecentDocumentsForSlugs(slugs, 10)
+      const [docs, researchRows] = await Promise.all([
+        fetchRecentDocumentsForSlugs(slugs, 10),
+        fetchResearchCacheRowsForSlugs(slugs),
+      ])
       setRecentDocs(docs)
+      setResearchHighlights(flattenWatchlistResearchHighlights(researchRows))
     } catch {
       setRecentDocs([])
+      setResearchHighlights([])
     } finally {
       setRecentLoading(false)
+      setResearchLoading(false)
     }
   }, [user])
 
@@ -242,6 +309,8 @@ export default function HomeScreen() {
             onSignOut={() => void signOut()}
             recentDocs={recentDocs}
             recentLoading={recentLoading}
+            researchHighlights={researchHighlights}
+            researchLoading={researchLoading}
             onOpenCompany={(slug) => router.push(`/company/${slug}`)}
           />
         }
@@ -329,6 +398,7 @@ function buildStyles(colors: ReturnType<typeof useVerityPalette>) {
     recentSection: { marginTop: space.lg, marginBottom: space.md },
     recentKicker: { fontFamily: font.medium, fontSize: 11, letterSpacing: 1.8 },
     recentTitle: { fontFamily: font.semi, fontSize: 18, marginTop: space.xs },
+    recentSub: { fontFamily: font.regular, fontSize: 13, lineHeight: 18, marginTop: 6 },
     recentHint: { fontFamily: font.regular, fontSize: 14, lineHeight: 20, marginTop: space.sm },
     recentRow: {
       marginTop: space.sm,
