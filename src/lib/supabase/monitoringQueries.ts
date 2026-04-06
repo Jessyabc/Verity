@@ -46,6 +46,14 @@ export function mapDbStatusToUi(
   return 'error'
 }
 
+export async function fetchCompaniesBySlugs(slugs: string[]): Promise<DbCompany[]> {
+  if (!isSupabaseConfigured() || slugs.length === 0) return []
+  const sb = getSupabaseBrowserClient()
+  const { data, error } = await sb.from('companies').select('*').in('slug', slugs)
+  if (error) throw error
+  return (data ?? []) as DbCompany[]
+}
+
 export async function fetchCompanyRowBySlug(
   slug: string,
 ): Promise<DbCompany | null> {

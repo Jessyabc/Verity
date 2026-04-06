@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CompanyLogo } from '@/components/CompanyLogo'
 import { OrbIcon } from '@/components/icons/OrbIcon'
@@ -7,14 +7,15 @@ import { Card } from '@/components/ui/Card'
 import { Container } from '@/components/ui/Container'
 import { getPilotCompanyBySlug } from '@/data/pilot-universe'
 import { getRecentUpdatesForSlugs } from '@/data/queries'
-import type { PilotCompany } from '@/data/types'
 import { useReadUpdates } from '@/hooks/useReadUpdates'
 import { useRecentDbDocuments } from '@/hooks/useRecentDbDocuments'
 import { useWatchlist } from '@/hooks/useWatchlist'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { messageFromFunctionsInvokeFailure } from '@/lib/supabase/edgeFunctionError'
+import type { DbCompany } from '@/lib/supabase/monitoringTypes'
 import {
+  fetchCompaniesBySlugs,
   fetchCompanyRowBySlug,
   formatAgo,
   shortDocumentTitle,
@@ -25,12 +26,28 @@ export function DashboardPage() {
   const [researchBusy, setResearchBusy] = useState(false)
   const [researchErr, setResearchErr] = useState<string | null>(null)
   const { isRead } = useReadUpdates()
-  const recent = getRecentUpdatesForSlugs(slugs, 8)
+  const pilotUpdates = getRecentUpdatesForSlugs(slugs, 8)
   const {
     loading: dbLoading,
     error: dbError,
     rows: dbRows,
-  } = useRecentDbDocuments(slugs, 8)
+  } = useRecentDbDocuments(slugs, 12)
+
+  // Fetch inventory (non-pilot) company rows from Supabase so they show in the grid
+  const inventorySlugs = useMemo(
+    () => slugs.filter((s) => !getPilotCompanyBySlug(s)),
+    [slugs],
+  )
+  const [inventoryCompanies, setInventoryCompanies] = useState<DbCompany[]>([])
+  useEffect(() => {
+    if (!isSupabaseConfigured() || inventorySlugs.length === 0) {
+      setInventoryCompanies([])
+      return
+    }
+    void fetchCompaniesBySlugs(inventorySlugs).then(setInventoryCompanies).catch(() => {
+      setInventoryCompanies([])
+    })
+  }, [inventorySlugs])
 
   const hasWatchlist = slugs.length > 0
 
@@ -55,9 +72,7 @@ export function DashboardPage() {
         }
         const { data, error, response } = await sb.functions.invoke<{ error?: string }>(
           'research-company',
-          {
-            body: { slug, companyName, ticker },
-          },
+          { body: { slug, companyName, ticker } },
         )
         if (error) {
           const msg = await messageFromFunctionsInvokeFailure(error, response)
@@ -82,12 +97,12 @@ export function DashboardPage() {
             Watchlist
           </p>
           <h1 className="mt-2 text-3xl font-medium tracking-[-0.03em] text-ink sm:text-[2rem]">
-            What’s new across your companies
+            What's new across your companies
           </h1>
           <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-ink-muted">
             {hasWatchlist
-              ? 'Pilot bundle plus Supabase inventory — watchlist syncs when connected.'
-              : 'Add companies from search, then track updates and research here.'}
+              ? 'Latest filings, press releases, and IR documents — linked directly to the source.'
+              : 'Add companies from search, then track their latest documents here.'}
           </p>
         </div>
         <Button variant="secondary" className="shrink-0 self-start sm:self-auto" asChild>
@@ -105,16 +120,18 @@ export function DashboardPage() {
               No companies on your watchlist
             </h2>
             <p className="mt-2 max-w-sm text-[15px] leading-relaxed text-ink-muted">
-              Search the pilot universe and tap <span className="text-ink">Watch</span> on a
-              profile. Updates will aggregate here with source links.
+              Search the universe and tap <span className="text-ink">Watch</span> on a profile.
+              New documents will surface here with direct source links.
             </p>
             <Button className="mt-8" variant="primary" asChild>
-              <Link to="/app/search">Browse pilot companies</Link>
+              <Link to="/app/search">Browse companies</Link>
             </Button>
           </div>
         </Card>
       ) : (
         <section className="space-y-10">
+
+          {/* ── Your companies grid ── */}
           <div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-[13px] font-medium uppercase tracking-[0.16em] text-ink-subtle">
@@ -128,7 +145,7 @@ export function DashboardPage() {
                   disabled={researchBusy}
                   onClick={() => void refreshWatchlistResearch()}
                 >
-                  {researchBusy ? 'Refreshing research…' : 'Refresh research (watchlist)'}
+                  {researchBusy ? 'Refreshing…' : 'Refresh research'}
                 </Button>
               ) : null}
             </div>
@@ -138,16 +155,14 @@ export function DashboardPage() {
               </p>
             ) : null}
             <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {/* Pilot companies */}
               {slugs
                 .map((slug) => {
-                  const company = getPilotCompanyBySlug(slug)
-                  return company ? { slug, company } : null
+                  const c = getPilotCompanyBySlug(slug)
+                  return c ? { slug, name: c.name, ticker: c.ticker, tagline: c.tagline, logoUrl: c.logoUrl, exchange: c.exchange, lastCheckedLabel: c.companyLastCheckedLabel } : null
                 })
-                .filter(
-                  (row): row is { slug: string; company: PilotCompany } =>
-                    row !== null,
-                )
-                .map(({ slug, company: c }) => (
+                .filter((r): r is NonNullable<typeof r> => r !== null)
+                .map(({ slug, name, ticker, tagline, logoUrl, exchange, lastCheckedLabel }) => (
                   <li key={slug}>
                     <Link to={`/app/company/${slug}`}>
                       <Card
@@ -156,128 +171,175 @@ export function DashboardPage() {
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex min-w-0 flex-1 items-start gap-3">
-                            <CompanyLogo
-                              name={c.name}
-                              ticker={c.ticker}
-                              logoUrl={c.logoUrl}
-                              size="sm"
-                            />
+                            <CompanyLogo name={name} ticker={ticker} logoUrl={logoUrl} size="sm" />
                             <div className="min-w-0">
-                              <p className="font-medium tracking-tight text-ink">{c.name}</p>
+                              <p className="font-medium tracking-tight text-ink">{name}</p>
                               <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-ink-muted">
-                                {c.tagline}
+                                {tagline}
                               </p>
                             </div>
                           </div>
-                          {c.ticker ? (
+                          {ticker ? (
                             <span className="shrink-0 rounded-md border border-black/[0.06] bg-white/80 px-2 py-1 font-mono text-[11px] font-medium tabular-nums text-ink">
-                              {c.ticker}
+                              {ticker}
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-4 text-[12px] text-ink-subtle">
-                          Last check:{' '}
-                          <span className="text-ink-muted">{c.companyLastCheckedLabel}</span>
-                        </p>
+                        <div className="mt-4 flex items-center justify-between gap-2">
+                          <p className="text-[12px] text-ink-subtle">
+                            Last check:{' '}
+                            <span className="text-ink-muted">{lastCheckedLabel}</span>
+                          </p>
+                          {exchange ? (
+                            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
+                              {exchange}
+                            </span>
+                          ) : null}
+                        </div>
                       </Card>
                     </Link>
                   </li>
                 ))}
+              {/* Inventory (non-pilot) companies fetched from Supabase */}
+              {inventoryCompanies.map((c) => (
+                <li key={c.slug}>
+                  <Link to={`/app/company/${c.slug}`}>
+                    <Card
+                      padding="sm"
+                      className="h-full transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:shadow-[0_12px_40px_rgba(12,13,17,0.08)]"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 flex-1 items-start gap-3">
+                          <CompanyLogo name={c.name} ticker={c.ticker} size="sm" />
+                          <div className="min-w-0">
+                            <p className="font-medium tracking-tight text-ink">{c.name}</p>
+                            {c.tagline ? (
+                              <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-ink-muted">
+                                {c.tagline}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                        {c.ticker ? (
+                          <span className="shrink-0 rounded-md border border-black/[0.06] bg-white/80 px-2 py-1 font-mono text-[11px] font-medium tabular-nums text-ink">
+                            {c.ticker}
+                          </span>
+                        ) : null}
+                      </div>
+                      {c.exchange ? (
+                        <p className="mt-4 text-right text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
+                          {c.exchange}
+                        </p>
+                      ) : null}
+                    </Card>
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 
-          {isSupabaseConfigured() ? (
-            <div>
-              <h2 className="text-[13px] font-medium uppercase tracking-[0.16em] text-ink-subtle">
-                Live tracked URLs
-              </h2>
-              <p className="mt-1 text-[13px] text-ink-subtle">
-                From Supabase <span className="font-mono text-[12px]">tracked_documents</span> for
-                companies on your watchlist.
-              </p>
-              {dbLoading ? (
-                <p className="mt-4 text-[14px] text-ink-muted" role="status">
-                  Loading live rows…
-                </p>
-              ) : null}
-              {dbError ? (
-                <p className="mt-4 text-[14px] text-rose-800" role="alert">
-                  {dbError}
-                </p>
-              ) : null}
-              {!dbLoading && !dbError && dbRows.length === 0 ? (
-                <Card className="mt-4 border-dashed border-black/[0.1] bg-white/45 shadow-none">
-                  <p className="text-[14px] leading-relaxed text-ink-muted">
-                    No live rows yet — apply migrations, seed companies/sources, then run{' '}
-                    <span className="font-mono text-[12px]">npm run monitor:once</span>.
+          {/* ── Latest documents feed ── */}
+          <div>
+            <h2 className="text-[13px] font-medium uppercase tracking-[0.16em] text-ink-subtle">
+              Latest from your watchlist
+            </h2>
+            <p className="mt-1 text-[13px] text-ink-subtle">
+              {isSupabaseConfigured()
+                ? 'Live — linked directly to source documents on company websites.'
+                : 'Bundled pilot data — connect Supabase to see live documents.'}
+            </p>
+
+            {/* Live DB documents */}
+            {isSupabaseConfigured() ? (
+              <>
+                {dbLoading ? (
+                  <p className="mt-4 text-[14px] text-ink-muted" role="status">
+                    Loading documents…
                   </p>
-                </Card>
-              ) : null}
-              {dbRows.length > 0 ? (
-                <ul className="mt-4 space-y-3">
-                  {dbRows.map(({ document: d, companyName, companySlug }) => (
-                    <li key={d.id}>
-                      <Card
-                        padding="sm"
-                        className="transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:shadow-[0_12px_40px_rgba(12,13,17,0.08)]"
-                      >
-                        <Link to={`/app/updates/${d.id}`} className="block">
-                          <p className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
-                            {companyName} · {formatAgo(d.last_checked_at)}
-                          </p>
-                          <div className="mt-2 flex items-start justify-between gap-3">
-                            <p className="text-[15px] font-medium tracking-tight text-ink">
-                              {shortDocumentTitle(d)}
+                ) : null}
+                {dbError ? (
+                  <p className="mt-4 text-[14px] text-rose-800" role="alert">
+                    {dbError}
+                  </p>
+                ) : null}
+                {!dbLoading && !dbError && dbRows.length === 0 ? (
+                  <Card className="mt-4 border-dashed border-black/[0.1] bg-white/45 shadow-none">
+                    <p className="text-[14px] leading-relaxed text-ink-muted">
+                      No documents yet — apply migrations, add company sources, then run{' '}
+                      <span className="font-mono text-[12px]">npm run monitor:once</span>.
+                    </p>
+                  </Card>
+                ) : null}
+                {dbRows.length > 0 ? (
+                  <ul className="mt-4 space-y-3">
+                    {dbRows.map(({ document: d, companyName, companySlug }) => (
+                      <li key={d.id}>
+                        <Card
+                          padding="sm"
+                          className="transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:shadow-[0_12px_40px_rgba(12,13,17,0.08)]"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
+                              <Link
+                                to={`/app/company/${companySlug}`}
+                                className="text-accent hover:underline underline-offset-2"
+                              >
+                                {companyName}
+                              </Link>
+                              {' · '}
+                              {formatAgo(d.last_checked_at)}
                             </p>
                             {!isRead(d.id) ? (
                               <span
-                                className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent"
+                                className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-accent"
                                 aria-label="Unread"
                               />
                             ) : null}
                           </div>
-                          <p className="mt-2 line-clamp-2 font-mono text-[12px] leading-relaxed text-ink-muted">
-                            {d.canonical_url}
-                          </p>
+                          {/* Title links directly to source document on company site */}
+                          <a
+                            href={d.canonical_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 block text-[15px] font-medium tracking-tight text-ink hover:text-accent"
+                          >
+                            {shortDocumentTitle(d)}
+                          </a>
                           {d.summary_text?.trim() ? (
-                            <p className="mt-2 line-clamp-2 text-[14px] leading-relaxed text-ink-muted">
+                            <p className="mt-2 line-clamp-3 text-[14px] leading-relaxed text-ink-muted">
                               {d.summary_text}
                             </p>
                           ) : null}
-                        </Link>
-                        <p className="mt-3 text-[12px] text-ink-subtle">
-                          <Link
-                            to={`/app/company/${companySlug}`}
-                            className="text-accent underline decoration-accent/35 underline-offset-2"
-                          >
-                            Company profile
-                          </Link>
-                        </p>
-                      </Card>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          ) : null}
+                          <div className="mt-3 flex items-center gap-4">
+                            <p className="truncate font-mono text-[11px] text-ink-subtle">
+                              {d.canonical_url}
+                            </p>
+                            <Link
+                              to={`/app/updates/${d.id}`}
+                              className="shrink-0 text-[12px] font-medium text-accent underline-offset-2 hover:underline"
+                            >
+                              Details →
+                            </Link>
+                          </div>
+                        </Card>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </>
+            ) : null}
 
-          <div>
-            <h2 className="text-[13px] font-medium uppercase tracking-[0.16em] text-ink-subtle">
-              Pilot demo updates
-            </h2>
-            <p className="mt-1 text-[13px] text-ink-subtle">
-              Bundled narratives — works without Supabase.
-            </p>
-            {recent.length === 0 ? (
-              <Card className="mt-4 border-dashed border-black/[0.1] bg-white/45 shadow-none">
-                <p className="text-[14px] leading-relaxed text-ink-muted">
-                  No sample documents yet for your watchlist — JPMorgan is a pilot with
-                  zero fixtures on purpose. Add Microsoft or Apple to see entries.
-                </p>
-              </Card>
-            ) : (
-              <ul className="mt-4 space-y-3">
-                {recent.map(({ company, update }) => (
+            {/* Pilot demo updates — shown as fallback when no live data */}
+            {(!isSupabaseConfigured() || (!dbLoading && dbRows.length === 0 && !dbError)) && pilotUpdates.length > 0 ? (
+              <ul className={`space-y-3 ${isSupabaseConfigured() ? 'mt-6' : 'mt-4'}`}>
+                {isSupabaseConfigured() ? (
+                  <li>
+                    <p className="mb-2 text-[12px] font-medium uppercase tracking-wide text-ink-subtle">
+                      Pilot demo data
+                    </p>
+                  </li>
+                ) : null}
+                {pilotUpdates.map(({ company, update }) => (
                   <li key={update.id}>
                     <Link to={`/app/updates/${update.id}`}>
                       <Card
@@ -306,8 +368,18 @@ export function DashboardPage() {
                   </li>
                 ))}
               </ul>
-            )}
+            ) : null}
+
+            {!isSupabaseConfigured() && pilotUpdates.length === 0 ? (
+              <Card className="mt-4 border-dashed border-black/[0.1] bg-white/45 shadow-none">
+                <p className="text-[14px] leading-relaxed text-ink-muted">
+                  No sample documents for your current watchlist — try adding Microsoft or Apple to
+                  see pilot entries.
+                </p>
+              </Card>
+            ) : null}
           </div>
+
         </section>
       )}
     </Container>
