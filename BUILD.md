@@ -7,7 +7,7 @@
 ## Persistence
 
 - **Pilot data (bundled):** [`src/data/pilot-universe.ts`](src/data/pilot-universe.ts)
-- **Watchlist:** [`WatchlistProvider`](src/contexts/WatchlistProvider.tsx) — `localStorage` per user id
+- **Watchlist:** [`WatchlistProvider`](src/contexts/WatchlistProvider.tsx) — Supabase `user_watchlist` + `localStorage` cache
 - **Read / unread (updates):** [`ReadUpdatesProvider`](src/contexts/ReadUpdatesProvider.tsx) — `localStorage` per user id
 - **Supabase (optional):** Auth + future sync; apply [`supabase/migrations`](supabase/migrations/) for `companies`, `company_sources`, `tracked_documents`, `fetch_logs`
 
@@ -27,7 +27,7 @@
 
 ## Phase 2 — Source discovery + profiles (local + DB schema)
 
-- [x] Search, company profile, coverage transparency UI
+- [x] Search (pilot + `search_companies` RPC), SEC bulk import (`npm run import:sec-tickers`), company profile + coverage UI
 - [x] Watchlist + read/unread for pilot update ids
 - [x] Supabase schema for companies/sources/documents/logs: [`supabase/migrations`](supabase/migrations/)
 - [x] Wire UI to read `tracked_documents` / company sources when `VITE_SUPABASE_*` present (company profile, dashboard, update detail for UUID ids)
@@ -61,7 +61,16 @@
 - [x] UI: **Company profile** (research card), **Dashboard** (refresh watchlist), **Settings** (weekend preference note)
 - [x] CI: [weekdays](.github/workflows/research-weekdays.yml) Mon–Fri `08:00 UTC` · [weekends](.github/workflows/research-weekends.yml) optional (uncomment schedule + run manually)
 
-**Deploy Edge Function:** `supabase functions deploy research-company` and set secrets `PERPLEXITY_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Dashboard → Edge Functions → Secrets).
+**Deploy Edge Functions** (from repo root, with CLI linked to the project):
+
+```bash
+supabase functions deploy research-company
+supabase functions deploy admin-upsert-company
+```
+
+**Secrets** (Dashboard → Edge Functions → Secrets, or `supabase secrets set`): `PERPLEXITY_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL` (your admin email; must match `VITE_ADMIN_EMAIL` in Vercel for the Admin UI link). `SUPABASE_ANON_KEY` is required so functions can validate the caller’s JWT.
+
+**`research-company`** (Perplexity refresh) requires a **signed-in** user — the browser sends the session JWT automatically.
 
 **GitHub:** add `PERPLEXITY_API_KEY`. Workflows set `WATCHLIST_FROM_DB=true` so research uses distinct slugs from `user_watchlist` (synced from the app). Optional secret `WATCHLIST_SLUGS` is a fallback when no rows exist yet. Adjust weekday cron UTC to match your “~8am” locally.
 
@@ -75,7 +84,15 @@ npm run monitor:once        # needs SUPABASE_SERVICE_ROLE_KEY + migration applie
 npm run enrich:once         # needs OPENAI_API_KEY + enrichment migration applied
 npm run research:watchlist  # PERPLEXITY_API_KEY + WATCHLIST_FROM_DB or WATCHLIST_SLUGS + research cache migration
 npm run research:company -- microsoft
+npm run import:sec-tickers # SEC_USER_AGENT + migration 20260407140000 — US SEC registrants → companies (slug cik-*)
 ```
+
+## End-to-end pipeline (what makes profiles “real”)
+
+1. **Sources** — SEC rows start without URLs. Use **Admin → “Add monitor URL to existing slug”** (or “New company + source”) so `company_sources` has a `base_url`. Redeploy Edge Function `admin-upsert-company` after pulling the `add_source_only` mode.
+2. **Monitor** — `npm run monitor:once` checks **pilot JSON** and **every other** `company_sources` row (deduped against pilot slug+source_key). GitHub: [`monitor-schedule.yml`](.github/workflows/monitor-schedule.yml) with `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`.
+3. **Research** — Edge `research-company` + Dashboard/profile **Refresh**; cron: [`research-weekdays.yml`](.github/workflows/research-weekdays.yml) needs `PERPLEXITY_API_KEY` (+ Supabase secrets).
+4. **Enrich** — `npm run enrich:once` or **Actions → Enrich documents once** with `OPENAI_API_KEY`. Optional weekly schedule: see comments in [`enrich-once.yml`](.github/workflows/enrich-once.yml).
 
 ## Deploy
 
@@ -87,5 +104,6 @@ See Phase 1; set `VITE_SUPABASE_*` in the host’s env for production auth.
 
 1. Apply [`supabase/migrations`](supabase/migrations/) to your Verity Supabase project (monitoring, enrichment, and `company_research_cache`).
 2. Copy `.env.example` → `.env.local`, add Supabase + `OPENAI_API_KEY`, then run `npm run monitor:once` and `npm run enrich:once`.
-3. Deploy [`research-company`](supabase/functions/research-company/index.ts) Edge Function; add `PERPLEXITY_API_KEY` to GitHub; apply `user_watchlist` migration so app + `WATCHLIST_FROM_DB` jobs see watchlist rows; enable [`research-weekdays.yml`](.github/workflows/research-weekdays.yml).
-4. Optional: schedule [`monitor-schedule.yml`](.github/workflows/monitor-schedule.yml) and [`enrich-once.yml`](.github/workflows/enrich-once.yml) with matching secrets.
+3. Deploy Edge Functions `research-company` and `admin-upsert-company` (see Phase 5 above); set `PERPLEXITY_API_KEY`, `ADMIN_EMAIL`, `SUPABASE_ANON_KEY`, and service role secrets; add `VITE_ADMIN_EMAIL` (same as `ADMIN_EMAIL`) in Vercel for the Admin nav.
+4. Add `PERPLEXITY_API_KEY` to GitHub; apply `user_watchlist` migration so app + `WATCHLIST_FROM_DB` jobs see watchlist rows; enable [`research-weekdays.yml`](.github/workflows/research-weekdays.yml).
+5. Confirm GitHub secrets for [`monitor-schedule.yml`](.github/workflows/monitor-schedule.yml), [`research-weekdays.yml`](.github/workflows/research-weekdays.yml), and on-demand [`enrich-once.yml`](.github/workflows/enrich-once.yml).

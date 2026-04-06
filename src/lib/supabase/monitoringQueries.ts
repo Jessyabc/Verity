@@ -46,6 +46,47 @@ export function mapDbStatusToUi(
   return 'error'
 }
 
+export async function fetchCompaniesBySlugs(slugs: string[]): Promise<DbCompany[]> {
+  if (!isSupabaseConfigured() || slugs.length === 0) return []
+  const sb = getSupabaseBrowserClient()
+  const { data, error } = await sb.from('companies').select('*').in('slug', slugs)
+  if (error) throw error
+  return (data ?? []) as DbCompany[]
+}
+
+export async function fetchCompanyRowBySlug(
+  slug: string,
+): Promise<DbCompany | null> {
+  if (!isSupabaseConfigured()) return null
+
+  const sb = getSupabaseBrowserClient()
+  const { data, error } = await sb
+    .from('companies')
+    .select('*')
+    .eq('slug', slug)
+    .maybeSingle()
+
+  if (error) throw error
+  return data ? (data as DbCompany) : null
+}
+
+/**
+ * Server-side search via `search_companies` RPC (scales to large SEC universes).
+ * Empty query returns the newest rows (browse).
+ */
+export async function fetchCompaniesForSearch(query: string): Promise<DbCompany[]> {
+  if (!isSupabaseConfigured()) return []
+
+  const sb = getSupabaseBrowserClient()
+  const { data, error } = await sb.rpc('search_companies', {
+    p_query: query.trim(),
+    p_limit: 60,
+  })
+
+  if (error) throw error
+  return (data ?? []) as DbCompany[]
+}
+
 export async function fetchCompanyBundleBySlug(
   slug: string,
 ): Promise<{
@@ -81,7 +122,8 @@ export async function fetchCompanyBundleBySlug(
     .from('tracked_documents')
     .select('*')
     .eq('company_id', co.id)
-    .order('last_checked_at', { ascending: false })
+    .order('last_checked_at', { ascending: false, nullsFirst: false })
+    .order('first_seen_at', { ascending: false, nullsFirst: false })
     .limit(25)
 
   if (dErr) throw dErr
@@ -146,6 +188,29 @@ export type RecentDbDoc = {
   companyName: string
 }
 
+function docRecencyMs(d: DbTrackedDocument): number {
+  const t = d.last_checked_at ?? d.first_seen_at
+  const ms = Date.parse(t)
+  return Number.isFinite(ms) ? ms : 0
+}
+
+function diversifyRecentByCompany(rows: RecentDbDoc[], limit: number, companyCount: number): RecentDbDoc[] {
+  if (rows.length === 0 || companyCount <= 0) return []
+  const perCompany = Math.max(1, Math.ceil(limit / companyCount))
+  const counts = new Map<string, number>()
+  const sorted = [...rows].sort((a, b) => docRecencyMs(b.document) - docRecencyMs(a.document))
+  const out: RecentDbDoc[] = []
+  for (const row of sorted) {
+    const id = row.document.company_id
+    const n = counts.get(id) ?? 0
+    if (n >= perCompany) continue
+    counts.set(id, n + 1)
+    out.push(row)
+    if (out.length >= limit) break
+  }
+  return out
+}
+
 export async function fetchRecentDocumentsForSlugs(
   slugs: string[],
   limit = 12,
@@ -162,17 +227,16 @@ export async function fetchRecentDocumentsForSlugs(
   if (cErr) throw cErr
   if (!companies?.length) return []
 
-  const idBySlug = new Map(
-    companies.map((c) => [c.id as string, c as { id: string; slug: string; name: string }]),
-  )
-  const companyIds = [...idBySlug.keys()]
+  const companyIds = companies.map((c) => c.id as string)
+  const fetchCap = Math.min(150, Math.max(limit * 3, limit * slugs.length))
 
   const { data: docs, error: dErr } = await sb
     .from('tracked_documents')
     .select('*')
     .in('company_id', companyIds)
-    .order('last_checked_at', { ascending: false })
-    .limit(limit * 2)
+    .order('last_checked_at', { ascending: false, nullsFirst: false })
+    .order('first_seen_at', { ascending: false, nullsFirst: false })
+    .limit(fetchCap)
 
   if (dErr) throw dErr
 
@@ -182,16 +246,15 @@ export async function fetchRecentDocumentsForSlugs(
       { slug: c.slug as string, name: c.name as string },
     ]),
   )
-  const out: RecentDbDoc[] = []
+  const asRows: RecentDbDoc[] = []
   for (const d of (docs ?? []) as DbTrackedDocument[]) {
     const meta = metaByCompanyId.get(d.company_id)
     if (!meta) continue
-    out.push({
+    asRows.push({
       document: d,
       companySlug: meta.slug,
       companyName: meta.name,
     })
-    if (out.length >= limit) break
   }
-  return out
+  return diversifyRecentByCompany(asRows, limit, companies.length)
 }

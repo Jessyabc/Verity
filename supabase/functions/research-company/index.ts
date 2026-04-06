@@ -1,26 +1,70 @@
 /**
  * Invoke from the app: supabase.functions.invoke('research-company', { body: { slug, companyName, ticker } })
- * Secrets: PERPLEXITY_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ * Requires a signed-in user (Authorization: Bearer <access_token>).
+ * Secrets: PERPLEXITY_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
-
-const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-}
+import { corsHeaders } from '../_shared/cors.ts'
+import { requireSession } from '../_shared/requireSession.ts'
 
 function buildPrompt(companyName: string, ticker: string | null): string {
   const t = ticker ? ` (${ticker})` : ''
   return (
     `You are helping an equity research analyst stay current on ${companyName}${t}.\n\n` +
-    `Using web search, list as many distinct, recent (last ~30 days when possible) news items as you can — ` +
-    `official IR/SEC/press preferred; reputable outlets otherwise.\n\n` +
+    `Using web search, list distinct, recent items (last ~30 days when possible).\n\n` +
+    `SOURCE PRIORITY (strict):\n` +
+    `1) Official company properties: investor relations, press/newsroom, corporate domain, official PDF releases.\n` +
+    `2) SEC EDGAR (sec.gov) and other primary regulatory filings.\n` +
+    `3) Major newswires and reputable business press.\n` +
+    `Do NOT use YouTube, TikTok, Facebook, Instagram, Reddit, or fan blogs unless they are the company's ONLY official channel (rare). Prefer pages on the company's own domain over third-party video or social URLs.\n\n` +
     `Respond with ONLY valid JSON (no markdown fences): an array of objects, each with:\n` +
     `"title" (string), "url" (string, https), "source" (string or null), "snippet" (string, 1–2 sentences or null), ` +
     `"published_at" (ISO date string or human-readable date or null).\n` +
     `Cap at 25 items; omit duplicates.`
   )
+}
+
+/** Prefer official / IR / SEC; demote social and video aggregators after the model returns. */
+function scoreResearchUrl(url: string): number {
+  try {
+    const h = new URL(url).hostname.toLowerCase()
+    if (h.includes('sec.gov')) return 100
+    if (h.endsWith('.gov')) return 75
+    if (
+      h.startsWith('ir.') ||
+      h.startsWith('investors.') ||
+      h.includes('.ir.') ||
+      h.includes('investor.') ||
+      h.includes('investors.') ||
+      h.includes('investorrelations') ||
+      h.includes('newsroom') ||
+      h.includes('pressroom') ||
+      h.includes('media.')
+    ) {
+      return 90
+    }
+    if (h.includes('youtube.com') || h === 'youtu.be') return -40
+    if (
+      h.includes('tiktok.com') ||
+      h.includes('facebook.com') ||
+      h.includes('instagram.com') ||
+      h.includes('reddit.com')
+    ) {
+      return -35
+    }
+    if (h.includes('twitter.com') || h === 'x.com' || h.endsWith('.x.com')) return -15
+    return 30
+  } catch {
+    return 0
+  }
+}
+
+function rankResearchItems(items: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  return [...items].sort((a, b) => {
+    const ua = typeof a.url === 'string' ? a.url : ''
+    const ub = typeof b.url === 'string' ? b.url : ''
+    return scoreResearchUrl(ub) - scoreResearchUrl(ua)
+  })
 }
 
 function parseItems(content: string): Array<Record<string, unknown>> {
@@ -62,6 +106,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const auth = await requireSession(req)
+    if ('response' in auth) return auth.response
+
     const body = (await req.json()) as {
       slug?: string
       companyName?: string
@@ -99,7 +146,7 @@ Deno.serve(async (req) => {
           {
             role: 'system',
             content:
-              'You have access to web search. Return only valid JSON arrays as instructed. No markdown.',
+              'You have access to web search. Prefer URLs on the issuer official domain, investor relations, press/newsroom, and sec.gov. Avoid YouTube and general social unless it is clearly the company official channel. Return only valid JSON arrays as instructed. No markdown.',
           },
           {
             role: 'user',
@@ -120,7 +167,7 @@ Deno.serve(async (req) => {
     const content = pjson.choices?.[0]?.message?.content
     if (!content) throw new Error('Empty Perplexity response')
 
-    const items = parseItems(content)
+    const items = rankResearchItems(parseItems(content))
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim()
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim()

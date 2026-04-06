@@ -1,5 +1,6 @@
-# Runs the one-shot monitor against Supabase (robots → GET → hash → upsert).
-# Add repository secrets: SUPABASE_URL (or reuse your project URL), SUPABASE_SERVICE_ROLE_KEY.
+# Runs monitor:once — seeds SEC EDGAR sources for watchlisted CIK companies with no sources,
+# then pilot URLs from pilot-urls.json, then every other company_sources row.
+# Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 name: Monitor once
 

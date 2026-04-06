@@ -8,6 +8,10 @@ export type DbCompany = {
   exchange: string | null
   tagline: string | null
   overview: string | null
+  /** SEC CIK when imported from SEC ticker file */
+  cik?: string | null
+  /** manual | sec | pilot_import */
+  universe_source?: string | null
   created_at: string
 }
 

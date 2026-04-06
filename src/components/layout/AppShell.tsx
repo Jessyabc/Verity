@@ -4,16 +4,18 @@ import { Logo } from '@/components/marketing/Logo'
 import { ReadUpdatesProvider } from '@/contexts/ReadUpdatesProvider'
 import { WatchlistProvider } from '@/contexts/WatchlistProvider'
 import { useAuth } from '@/hooks/useAuth'
+import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { cn } from '@/lib/cn'
 
-const nav = [
+const navBase = [
   { to: '/app/watchlist', label: 'Watchlist' },
   { to: '/app/search', label: 'Search' },
   { to: '/app/settings', label: 'Settings' },
-]
+] as const
 
 export function AppShell() {
   const { signOut, user } = useAuth()
+  const isAdmin = useIsAdmin()
 
   return (
     <WatchlistProvider key={user?.id}>
@@ -26,7 +28,10 @@ export function AppShell() {
             className="flex flex-1 items-center justify-center gap-1 sm:gap-2"
             aria-label="Primary"
           >
-            {nav.map((item) => (
+            {(isAdmin
+              ? [...navBase, { to: '/app/admin/inventory', label: 'Admin' }]
+              : [...navBase]
+            ).map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}

@@ -3,25 +3,35 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "dev": "vite",
+    "dev:mobile": "npx expo start ./apps/mobile",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "lint:mobile": "npm run lint -w mobile",
     "preview": "vite preview",
     "monitor:once": "tsx scripts/monitor-once.ts",
     "enrich:once": "tsx scripts/enrich-documents-once.ts",
     "research:company": "tsx scripts/research-company-once.ts",
-    "research:watchlist": "tsx scripts/research-watchlist-once.ts"
+    "research:watchlist": "tsx scripts/research-watchlist-once.ts",
+    "import:sec-tickers": "tsx scripts/import-sec-tickers.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",
     "openai": "^6.33.0",
     "pdf-parse": "^2.4.5",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-router-dom": "^7.14.0",
     "robots-parser": "^3.0.1",
     "tailwind-merge": "^3.5.0"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

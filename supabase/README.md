@@ -1,6 +1,6 @@
 # Supabase
 
 1. Create a project (separate from other products, per product strategy).
-2. Paste SQL from [`migrations/`](migrations/) into **SQL Editor** in order (includes `user_watchlist` for account watchlists + CI `WATCHLIST_FROM_DB`), or use the Supabase CLI: `supabase db push` (with CLI linked to this project).
+2. Paste SQL from [`migrations/`](migrations/) into **SQL Editor** in order (includes `user_watchlist`, `search_companies` RPC, `cik` / `universe_source` on `companies`), or use the Supabase CLI: `supabase db push` (with CLI linked to this project). Optional: `npm run import:sec-tickers` (see root `.env.example` for `SEC_USER_AGENT`) to load US SEC filers.
 3. Add `VITE_*` keys to the web app and **service role** only in `.env` / `.env.local` for `npm run monitor:once`, `npm run enrich:once`, and `npm run research:watchlist` (never expose service role in the browser). Enrichment needs `OPENAI_API_KEY`; company research needs `PERPLEXITY_API_KEY` (see `.env.example`).
-4. Deploy Edge Function `research-company` for in-app **Refresh** (`supabase functions deploy research-company`; set `PERPLEXITY_API_KEY` + service role in function secrets).
+4. Deploy Edge Functions: `research-company` (Perplexity refresh; requires signed-in user JWT + `SUPABASE_ANON_KEY`) and `admin-upsert-company` (inventory; requires `ADMIN_EMAIL` matching `VITE_ADMIN_EMAIL`). Set secrets in the Dashboard or via CLI.
