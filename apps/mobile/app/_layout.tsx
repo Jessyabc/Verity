@@ -9,12 +9,13 @@ import FontAwesome from '@expo/vector-icons/FontAwesome'
 import { ThemeProvider } from '@react-navigation/native'
 import { Stack } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
+import { StatusBar } from 'expo-status-bar'
 import { useEffect } from 'react'
-import 'react-native-reanimated'
 
 import { useColorScheme } from '@/components/useColorScheme'
 import { verityNavigationTheme } from '@/constants/navigationTheme'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { ThemePreferenceProvider } from '@/contexts/ThemePreferenceContext'
 import { useProtectedSession } from '@/hooks/useProtectedSession'
 
 export { ErrorBoundary } from 'expo-router'
@@ -45,19 +46,24 @@ export default function RootLayout() {
 
   if (!loaded) return null
 
-  return <RootLayoutNav />
+  return (
+    <ThemePreferenceProvider>
+      <AuthProvider>
+        <RootNavigationShell />
+      </AuthProvider>
+    </ThemePreferenceProvider>
+  )
 }
 
-function RootLayoutNav() {
+function RootNavigationShell() {
   const colorScheme = useColorScheme()
   const navTheme = verityNavigationTheme(colorScheme)
 
   return (
-    <AuthProvider>
-      <ThemeProvider value={navTheme}>
-        <AuthAwareStack />
-      </ThemeProvider>
-    </AuthProvider>
+    <ThemeProvider value={navTheme}>
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+      <AuthAwareStack />
+    </ThemeProvider>
   )
 }
 
@@ -68,6 +74,14 @@ function AuthAwareStack() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          headerBackTitle: 'Back',
+          animation: 'slide_from_right',
+        }}
+      />
       <Stack.Screen
         name="company/[slug]"
         options={{

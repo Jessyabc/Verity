@@ -17,10 +17,11 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variants: Record<Variant, string> = {
   primary:
-    'bg-accent text-white shadow-[0_1px_0_rgba(255,255,255,0.12)_inset] hover:bg-[#2a42c4] active:scale-[0.99]',
+    'bg-accent text-white shadow-[0_1px_0_rgba(255,255,255,0.14)_inset] hover:brightness-[0.95] active:scale-[0.99] dark:hover:brightness-110',
   secondary:
-    'bg-white/90 text-ink border border-black/[0.08] shadow-[0_1px_2px_rgba(12,13,17,0.05)] hover:bg-white',
-  ghost: 'text-ink-muted hover:text-ink hover:bg-black/[0.04]',
+    'border border-stroke bg-[var(--segment-active-bg)] text-ink shadow-[0_1px_2px_rgba(12,13,17,0.05)] hover:brightness-[1.02] dark:shadow-[0_1px_2px_rgba(0,0,0,0.25)] dark:hover:brightness-125',
+  ghost:
+    'text-ink-muted hover:bg-[var(--nav-pill-hover-bg)] hover:text-ink dark:hover:bg-white/[0.06]',
 }
 
 const base =

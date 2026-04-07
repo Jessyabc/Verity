@@ -217,7 +217,7 @@ export function AdminInventoryPage() {
           </div>
 
           {error ? (
-            <p className="rounded-xl border border-rose-200/80 bg-rose-50/80 px-3 py-2 text-[14px] text-rose-950">
+            <p className="rounded-xl border border-danger-hairline bg-danger-soft px-3 py-2 text-[14px] text-danger">
               {error}
             </p>
           ) : null}
@@ -284,7 +284,7 @@ export function AdminInventoryPage() {
           />
 
           {exError ? (
-            <p className="rounded-xl border border-rose-200/80 bg-rose-50/80 px-3 py-2 text-[14px] text-rose-950">
+            <p className="rounded-xl border border-danger-hairline bg-danger-soft px-3 py-2 text-[14px] text-danger">
               {exError}
             </p>
           ) : null}

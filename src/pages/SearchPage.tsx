@@ -100,7 +100,7 @@ export function SearchPage() {
               <p className="mt-2 text-[12px] text-ink-subtle">Loading inventory…</p>
             ) : null}
             {dbError ? (
-              <p className="mt-2 text-[12px] text-rose-800" role="alert">
+              <p className="mt-2 text-[12px] text-danger" role="alert">
                 Inventory search failed: {dbError}
               </p>
             ) : null}

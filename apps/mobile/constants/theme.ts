@@ -15,9 +15,9 @@ export const palette = {
 } as const
 
 export const paletteDark = {
-  canvas: '#0c0d11',
-  surface: 'rgba(28, 30, 38, 0.94)',
-  surfaceSolid: '#1c1e26',
+  canvas: '#060708',
+  surface: 'rgba(32, 34, 44, 0.55)',
+  surfaceSolid: '#14151c',
   ink: '#f4f5f7',
   inkMuted: '#a8adb8',
   inkSubtle: '#8b919c',

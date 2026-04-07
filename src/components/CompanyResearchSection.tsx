@@ -71,13 +71,13 @@ export function CompanyResearchSection({
       ) : null}
 
       {error ? (
-        <p className="mt-4 text-[14px] text-rose-800" role="alert">
+        <p className="mt-4 text-[14px] text-danger" role="alert">
           {error}
         </p>
       ) : null}
 
       {row?.error ? (
-        <p className="mt-4 text-[14px] text-rose-800" role="alert">
+        <p className="mt-4 text-[14px] text-danger" role="alert">
           Last fetch error: {row.error}
         </p>
       ) : null}

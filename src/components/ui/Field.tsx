@@ -19,7 +19,8 @@ export function Field({ id, label, hint, className, ...rest }: Props) {
       <input
         id={inputId}
         className={cn(
-          'w-full rounded-xl border border-black/[0.08] bg-white/90 px-3.5 py-2.5 text-[15px] text-ink shadow-[0_1px_2px_rgba(12,13,17,0.04)] outline-none transition-[box-shadow,border-color] placeholder:text-ink-subtle focus:border-accent/40 focus:ring-2 focus:ring-accent/25',
+          'w-full rounded-xl border px-3.5 py-2.5 text-[15px] text-ink shadow-[0_1px_2px_rgba(12,13,17,0.04)] outline-none transition-[box-shadow,border-color] placeholder:text-ink-subtle focus:border-accent/40 focus:ring-2 focus:ring-accent/25 dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]',
+          'bg-[var(--input-bg)] border-[var(--input-border)]',
           className,
         )}
         {...rest}

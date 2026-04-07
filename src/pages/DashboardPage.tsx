@@ -25,6 +25,7 @@ import {
   flattenWatchlistResearchHighlights,
   type WatchlistResearchHighlight,
 } from '@/lib/supabase/researchQueries'
+import { invokeWatchlistBrief } from '@/lib/supabase/watchlistBrief'
 
 export function DashboardPage() {
   const { slugs } = useWatchlist()
@@ -33,6 +34,13 @@ export function DashboardPage() {
   const [researchDigest, setResearchDigest] = useState<WatchlistResearchHighlight[]>([])
   const [researchDigestLoading, setResearchDigestLoading] = useState(false)
   const [researchDigestTick, setResearchDigestTick] = useState(0)
+  const [watchlistBrief, setWatchlistBrief] = useState<string | null>(null)
+  const [watchlistBriefMeta, setWatchlistBriefMeta] = useState<{
+    model: string | null
+    generated_at: string
+  } | null>(null)
+  const [watchlistBriefBusy, setWatchlistBriefBusy] = useState(false)
+  const [watchlistBriefErr, setWatchlistBriefErr] = useState<string | null>(null)
   const { isRead } = useReadUpdates()
   const pilotUpdates = getRecentUpdatesForSlugs(slugs, 8)
   const {
@@ -110,6 +118,21 @@ export function DashboardPage() {
     }
   }
 
+  async function generateWatchlistBrief() {
+    if (!isSupabaseConfigured()) return
+    setWatchlistBriefBusy(true)
+    setWatchlistBriefErr(null)
+    try {
+      const r = await invokeWatchlistBrief()
+      setWatchlistBrief(r.brief)
+      setWatchlistBriefMeta({ model: r.model, generated_at: r.generated_at })
+    } catch (e: unknown) {
+      setWatchlistBriefErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setWatchlistBriefBusy(false)
+    }
+  }
+
   return (
     <Container>
       <header className="mb-10 flex flex-col gap-4 sm:mb-12 sm:flex-row sm:items-end sm:justify-between">
@@ -151,6 +174,49 @@ export function DashboardPage() {
         </Card>
       ) : (
         <section className="space-y-10">
+          {isSupabaseConfigured() ? (
+            <div>
+              <h2 className="text-[13px] font-medium uppercase tracking-[0.16em] text-ink-subtle">
+                Watchlist summary
+              </h2>
+              <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-ink-subtle">
+                Factual overview from your cached research snippets and monitored page summaries only
+                — no recommendations. Generated on demand via OpenAI on the server.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={watchlistBriefBusy}
+                  onClick={() => void generateWatchlistBrief()}
+                >
+                  {watchlistBriefBusy
+                    ? 'Generating…'
+                    : watchlistBrief
+                      ? 'Regenerate summary'
+                      : 'Generate watchlist summary'}
+                </Button>
+              </div>
+              {watchlistBriefErr ? (
+                <p className="mt-2 text-[13px] text-danger" role="alert">
+                  {watchlistBriefErr}
+                </p>
+              ) : null}
+              {watchlistBrief ? (
+                <Card className="mt-4 border-black/[0.08] bg-white/70 shadow-[0_8px_32px_rgba(12,13,17,0.06)]">
+                  <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-ink-muted">
+                    {watchlistBrief}
+                  </p>
+                  {watchlistBriefMeta?.generated_at ? (
+                    <p className="mt-3 text-[11px] text-ink-subtle">
+                      Generated {formatAgo(watchlistBriefMeta.generated_at)}
+                      {watchlistBriefMeta.model ? ` · ${watchlistBriefMeta.model}` : null}
+                    </p>
+                  ) : null}
+                </Card>
+              ) : null}
+            </div>
+          ) : null}
 
           {/* ── Your companies grid ── */}
           <div>
@@ -171,7 +237,7 @@ export function DashboardPage() {
               ) : null}
             </div>
             {researchErr ? (
-              <p className="mt-2 text-[13px] text-rose-800" role="alert">
+              <p className="mt-2 text-[13px] text-danger" role="alert">
                 {researchErr}
               </p>
             ) : null}
@@ -343,7 +409,7 @@ export function DashboardPage() {
                   </p>
                 ) : null}
                 {dbError ? (
-                  <p className="mt-4 text-[14px] text-rose-800" role="alert">
+                  <p className="mt-4 text-[14px] text-danger" role="alert">
                     {dbError}
                   </p>
                 ) : null}

@@ -7,7 +7,7 @@ import { Logo } from '@/components/marketing/Logo'
 export function LandingPage() {
   return (
     <div className="mesh-bg min-h-svh">
-      <header className="border-b border-black/[0.06] bg-white/45 backdrop-blur-xl">
+      <header className="glass-header-marketing">
         <Container className="flex h-[4.25rem] items-center justify-between">
           <Logo />
           <div className="flex items-center gap-1 sm:gap-2">
