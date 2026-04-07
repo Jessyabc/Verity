@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 
+import { isInvalidStoredSessionError } from '@/lib/authSessionRecovery'
 import { applySessionFromUrl, getEmailMagicLinkRedirect } from '@/lib/authDeepLink'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import { registerSupabaseNativeAuthAutoRefresh } from '@/lib/supabaseNativeAutoRefresh'
@@ -41,6 +42,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false
+    let authSub: { unsubscribe: () => void } | undefined
+    let removeAutoRefresh: () => void = () => {}
 
     const boot = async () => {
       try {
@@ -49,9 +52,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // Deep link may be malformed; continue with stored session.
       }
-      const { data } = await supabase.auth.getSession()
-      if (!cancelled) setSession(data.session ?? null)
-      if (!cancelled) setInitialized(true)
+
+      let nextSession: Session | null = null
+      try {
+        const { data: first } = await supabase.auth.getSession()
+        nextSession = first.session ?? null
+
+        // Stale AsyncStorage session (e.g. after Expo Go reinstall): refresh token missing server-side.
+        if (nextSession) {
+          const { error } = await supabase.auth.refreshSession()
+          if (error && isInvalidStoredSessionError(error)) {
+            await supabase.auth.signOut({ scope: 'local' })
+            const { data: cleared } = await supabase.auth.getSession()
+            nextSession = cleared.session ?? null
+          } else if (!error) {
+            const { data: after } = await supabase.auth.getSession()
+            nextSession = after.session ?? null
+          }
+          // If error is transient (network), keep `nextSession` from first getSession().
+        }
+      } catch (e) {
+        if (isInvalidStoredSessionError(e)) {
+          await supabase.auth.signOut({ scope: 'local' })
+          nextSession = null
+        }
+      }
+
+      if (cancelled) return
+      setSession(nextSession)
+      setInitialized(true)
+
+      // After session is validated, subscribe + start native auto-refresh (avoids racing on bad tokens).
+      if (cancelled) return
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, next) => {
+        setSession(next)
+      })
+      if (cancelled) {
+        subscription.unsubscribe()
+        return
+      }
+      authSub = subscription
+      removeAutoRefresh = registerSupabaseNativeAuthAutoRefresh()
     }
 
     void boot()
@@ -60,18 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void applySessionFromUrl(url)
     })
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next)
-    })
-
-    const removeAutoRefresh = registerSupabaseNativeAuthAutoRefresh()
-
     return () => {
       cancelled = true
       linkSub.remove()
-      subscription.unsubscribe()
+      authSub?.unsubscribe()
       removeAutoRefresh()
     }
   }, [])
