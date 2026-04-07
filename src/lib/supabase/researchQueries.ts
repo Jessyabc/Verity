@@ -19,6 +19,9 @@ export type CompanyResearchRow = {
   fetched_at: string
   error: string | null
   model: string | null
+  company_narrative?: string | null
+  media_narrative?: string | null
+  factual_gaps?: unknown[] | null
 }
 
 export async function fetchResearchCacheRow(
@@ -29,7 +32,9 @@ export async function fetchResearchCacheRow(
   const sb = getSupabaseBrowserClient()
   const { data, error } = await sb
     .from('company_research_cache')
-    .select('slug, company_name, ticker, items, fetched_at, error, model')
+    .select(
+      'slug, company_name, ticker, items, fetched_at, error, model, company_narrative, media_narrative, factual_gaps',
+    )
     .eq('slug', slug)
     .maybeSingle()
 
@@ -46,6 +51,11 @@ export async function fetchResearchCacheRow(
     fetched_at: data.fetched_at as string,
     error: (data.error as string | null) ?? null,
     model: (data.model as string | null) ?? null,
+    company_narrative: (data as { company_narrative?: string | null }).company_narrative ?? null,
+    media_narrative: (data as { media_narrative?: string | null }).media_narrative ?? null,
+    factual_gaps: Array.isArray((data as { factual_gaps?: unknown }).factual_gaps)
+      ? ((data as { factual_gaps: unknown[] }).factual_gaps ?? null)
+      : null,
   }
 }
 
@@ -55,7 +65,9 @@ export async function fetchResearchCacheRowsForSlugs(slugs: string[]): Promise<C
   const sb = getSupabaseBrowserClient()
   const { data, error } = await sb
     .from('company_research_cache')
-    .select('slug, company_name, ticker, items, fetched_at, error, model')
+    .select(
+      'slug, company_name, ticker, items, fetched_at, error, model, company_narrative, media_narrative, factual_gaps',
+    )
     .in('slug', slugs)
     .order('fetched_at', { ascending: false })
 
@@ -71,6 +83,11 @@ export async function fetchResearchCacheRowsForSlugs(slugs: string[]): Promise<C
       fetched_at: row.fetched_at as string,
       error: (row.error as string | null) ?? null,
       model: (row.model as string | null) ?? null,
+      company_narrative: (row as { company_narrative?: string | null }).company_narrative ?? null,
+      media_narrative: (row as { media_narrative?: string | null }).media_narrative ?? null,
+      factual_gaps: Array.isArray((row as { factual_gaps?: unknown }).factual_gaps)
+        ? ((row as { factual_gaps: unknown[] }).factual_gaps ?? null)
+        : null,
     }
   })
 }

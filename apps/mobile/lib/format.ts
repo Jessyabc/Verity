@@ -34,3 +34,13 @@ export function formatAgo(iso: string | null | undefined): string {
   const days = Math.floor(h / 24)
   return `${days}d ago`
 }
+
+/** Company profile research strip — “Updated just now” when fresh. */
+export function formatResearchUpdated(iso: string | null | undefined): string {
+  const d = iso ? new Date(iso) : null
+  if (!d || Number.isNaN(d.getTime())) return 'Not yet updated'
+  const diff = Date.now() - d.getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'Updated just now'
+  return `Updated ${formatAgo(iso)}`
+}

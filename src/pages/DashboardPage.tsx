@@ -14,6 +14,7 @@ import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { messageFromFunctionsInvokeFailure } from '@/lib/supabase/edgeFunctionError'
 import type { DbCompany } from '@/lib/supabase/monitoringTypes'
+import { resolveCompanyLogoUrl } from '@/lib/companyLogo'
 import {
   fetchCompaniesBySlugs,
   fetchCompanyRowBySlug,
@@ -241,7 +242,7 @@ export function DashboardPage() {
                 {researchErr}
               </p>
             ) : null}
-            <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="mt-4 divide-y divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.06] bg-white/55 dark:divide-white/[0.08] dark:border-white/[0.08] dark:bg-white/[0.04]">
               {/* Pilot companies */}
               {slugs
                 .map((slug) => {
@@ -251,74 +252,68 @@ export function DashboardPage() {
                 .filter((r): r is NonNullable<typeof r> => r !== null)
                 .map(({ slug, name, ticker, tagline, logoUrl, exchange, lastCheckedLabel }) => (
                   <li key={slug}>
-                    <Link to={`/app/company/${slug}`}>
-                      <Card
-                        padding="sm"
-                        className="h-full transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:shadow-[0_12px_40px_rgba(12,13,17,0.08)]"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex min-w-0 flex-1 items-start gap-3">
-                            <CompanyLogo name={name} ticker={ticker} logoUrl={logoUrl} size="sm" />
-                            <div className="min-w-0">
-                              <p className="font-medium tracking-tight text-ink">{name}</p>
-                              <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-ink-muted">
-                                {tagline}
-                              </p>
-                            </div>
-                          </div>
-                          {ticker ? (
-                            <span className="shrink-0 rounded-md border border-black/[0.06] bg-white/80 px-2 py-1 font-mono text-[11px] font-medium tabular-nums text-ink">
-                              {ticker}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="mt-4 flex items-center justify-between gap-2">
-                          <p className="text-[12px] text-ink-subtle">
-                            Last check:{' '}
-                            <span className="text-ink-muted">{lastCheckedLabel}</span>
-                          </p>
-                          {exchange ? (
-                            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
-                              {exchange}
-                            </span>
-                          ) : null}
-                        </div>
-                      </Card>
+                    <Link
+                      to={`/app/company/${slug}`}
+                      className="flex items-center gap-4 px-4 py-4 transition-colors hover:bg-white/80 sm:px-5 dark:hover:bg-white/[0.06]"
+                    >
+                      <CompanyLogo name={name} ticker={ticker} logoUrl={logoUrl} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold tracking-tight text-ink">{name}</p>
+                        {tagline ? (
+                          <p className="mt-0.5 line-clamp-1 text-[13px] text-ink-muted">{tagline}</p>
+                        ) : null}
+                        <p className="mt-1 text-[11px] text-ink-subtle">
+                          Last check <span className="text-ink-muted">{lastCheckedLabel}</span>
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {ticker ? (
+                          <span className="font-mono text-[13px] font-medium tabular-nums text-ink-muted">
+                            {ticker}
+                          </span>
+                        ) : null}
+                        {exchange ? (
+                          <span className="hidden text-[11px] text-ink-subtle sm:inline">{exchange}</span>
+                        ) : null}
+                        <span className="text-[15px] text-ink-subtle" aria-hidden>
+                          ›
+                        </span>
+                      </div>
                     </Link>
                   </li>
                 ))}
               {/* Inventory (non-pilot) companies fetched from Supabase */}
               {inventoryCompanies.map((c) => (
                 <li key={c.slug}>
-                  <Link to={`/app/company/${c.slug}`}>
-                    <Card
-                      padding="sm"
-                      className="h-full transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:shadow-[0_12px_40px_rgba(12,13,17,0.08)]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 flex-1 items-start gap-3">
-                          <CompanyLogo name={c.name} ticker={c.ticker} size="sm" />
-                          <div className="min-w-0">
-                            <p className="font-medium tracking-tight text-ink">{c.name}</p>
-                            {c.tagline ? (
-                              <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-ink-muted">
-                                {c.tagline}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                        {c.ticker ? (
-                          <span className="shrink-0 rounded-md border border-black/[0.06] bg-white/80 px-2 py-1 font-mono text-[11px] font-medium tabular-nums text-ink">
-                            {c.ticker}
-                          </span>
-                        ) : null}
-                      </div>
-                      {c.exchange ? (
-                        <p className="mt-4 text-right text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
-                          {c.exchange}
-                        </p>
+                  <Link
+                    to={`/app/company/${c.slug}`}
+                    className="flex items-center gap-4 px-4 py-4 transition-colors hover:bg-white/80 sm:px-5 dark:hover:bg-white/[0.06]"
+                  >
+                    <CompanyLogo
+                      name={c.name}
+                      ticker={c.ticker}
+                      logoUrl={resolveCompanyLogoUrl({ explicit: c.logo_url })}
+                      size="sm"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold tracking-tight text-ink">{c.name}</p>
+                      {c.tagline ? (
+                        <p className="mt-0.5 line-clamp-1 text-[13px] text-ink-muted">{c.tagline}</p>
                       ) : null}
-                    </Card>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {c.ticker ? (
+                        <span className="font-mono text-[13px] font-medium tabular-nums text-ink-muted">
+                          {c.ticker}
+                        </span>
+                      ) : null}
+                      {c.exchange ? (
+                        <span className="hidden text-[11px] text-ink-subtle sm:inline">{c.exchange}</span>
+                      ) : null}
+                      <span className="text-[15px] text-ink-subtle" aria-hidden>
+                        ›
+                      </span>
+                    </div>
                   </Link>
                 </li>
               ))}

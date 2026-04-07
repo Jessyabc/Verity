@@ -18,6 +18,7 @@ export type SearchCompanyRow = {
   ticker: string | null
   exchange: string | null
   cik: string | null
+  logo_url?: string | null
 }
 
 /**

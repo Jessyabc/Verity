@@ -26,6 +26,18 @@ function normalizeUrl(raw: string): string {
   }
 }
 
+/** Favicon URL derived from IR base URL (matches web/mobile companyLogo helper). */
+function faviconLogoUrlFromHttpUrl(canonical: string): string | null {
+  try {
+    const u = new URL(canonical)
+    const host = u.hostname
+    if (!host) return null
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128`
+  } catch {
+    return null
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -134,6 +146,16 @@ Deno.serve(async (req) => {
 
       if (sourceErr) throw sourceErr
 
+      const favicon = faviconLogoUrlFromHttpUrl(canonical)
+      if (favicon) {
+        const { error: logoErr } = await supabase
+          .from('companies')
+          .update({ logo_url: favicon })
+          .eq('id', companyId)
+          .is('logo_url', null)
+        if (logoErr) throw logoErr
+      }
+
       return new Response(JSON.stringify({ ok: true, slug, companyId, mode: 'add_source_only' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -149,6 +171,8 @@ Deno.serve(async (req) => {
       )
     }
 
+    const logoUrl = faviconLogoUrlFromHttpUrl(canonical)
+
     const { data: companyRow, error: companyErr } = await supabase
       .from('companies')
       .upsert(
@@ -159,6 +183,7 @@ Deno.serve(async (req) => {
           exchange: body.exchange?.trim() || null,
           tagline: body.tagline?.trim() || null,
           overview: body.overview?.trim() || null,
+          ...(logoUrl ? { logo_url: logoUrl } : {}),
         },
         { onConflict: 'slug' },
       )

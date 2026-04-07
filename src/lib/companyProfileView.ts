@@ -44,6 +44,7 @@ export function resolveProfileCompany(
       exchange: db.exchange,
       tagline: db.tagline ?? '',
       overview: db.overview ?? '',
+      logoUrl: db.logo_url ?? undefined,
       pilotSources: [],
       pilotUpdates: [],
       companyLastCheckedLabel: '—',

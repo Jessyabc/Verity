@@ -1,8 +1,9 @@
 /**
  * Finnhub REST client — free tier (60 calls/min, no cost).
  *
- * API key: set EXPO_PUBLIC_FINNHUB_KEY in apps/mobile/.env
- * Sign up at https://finnhub.io (free, instant)
+ * API key: set EXPO_PUBLIC_FINNHUB_API_KEY in `apps/mobile/.env` (or repo root `.env.local`
+ * if your Expo env loader picks it up). Legacy alias: EXPO_PUBLIC_FINNHUB_KEY.
+ * https://finnhub.io
  *
  * All functions return null gracefully when the key is missing,
  * the ticker is not found, or the network call fails.
@@ -11,7 +12,11 @@
 const BASE = 'https://finnhub.io/api/v1'
 
 function key(): string | null {
-  return process.env.EXPO_PUBLIC_FINNHUB_KEY?.trim() || null
+  return (
+    process.env.EXPO_PUBLIC_FINNHUB_API_KEY?.trim() ||
+    process.env.EXPO_PUBLIC_FINNHUB_KEY?.trim() ||
+    null
+  )
 }
 
 export type StockQuote = {

@@ -10,34 +10,42 @@ import { requireSession } from '../_shared/requireSession.ts'
 function buildPrompt(companyName: string, ticker: string | null): string {
   const t = ticker ? ` (${ticker})` : ''
   return (
-    `You are a neutral equity research analyst. Your job is to surface the factual gap between ` +
-    `what ${companyName}${t} officially communicates (Company Narrative) and what independent ` +
-    `media, sell-side analysts, and financial journalists are reporting (Media & Analyst Narrative).\n\n` +
-    `RULES:\n` +
-    `- 100% factual and neutral. No interpretation, no sentiment, no advice.\n` +
-    `- Never use words like "bullish", "bearish", "buy", "sell", or "should".\n` +
-    `- Do NOT use YouTube, TikTok, Facebook, Instagram, Reddit, or fan blogs.\n\n` +
-    `SOURCE SPLIT:\n` +
-    `  Company Narrative → only: investor relations, press releases, 10-K, 10-Q, 8-K, earnings transcripts, SEC EDGAR.\n` +
-    `  Media & Analyst Narrative → only: WSJ, Bloomberg, Reuters, FT, Barron's, analyst notes, credible trade press.\n\n` +
+    `You are a neutral research assistant for ${companyName}${t}. ` +
+    `Enforce strict source separation at all times.\n\n` +
+    `GLOBAL RULES:\n` +
+    `- 100% factual and neutral. No sentiment, no advice, no forecasting.\n` +
+    `- Never use words like "bullish", "bearish", "buy", "sell", "should", or "recommend".\n` +
+    `- Do NOT use YouTube, TikTok, Facebook, Instagram, Reddit, or fan blogs for media narrative.\n\n` +
+    `COMPANY NARRATIVE (required text field company_narrative):\n` +
+    `Summarize ONLY official company sources: investor relations page, press releases, latest 10-K/SEC filings, ` +
+    `earnings releases. Do not use any third-party news.\n\n` +
+    `MEDIA & ANALYST NARRATIVE (required text field media_narrative):\n` +
+    `Summarize ONLY independent third-party sources: news articles, analyst reports, Seeking Alpha, Yahoo Finance, ` +
+    `credible financial press. Explicitly exclude the company's own website and company press releases.\n\n` +
+    `FACTUAL GAPS (factual_gaps array):\n` +
+    `3–5 short, mechanical, neutral bullets only. Examples:\n` +
+    `- Company reported $X in revenue; analysts expected $Y\n` +
+    `- Topic mentioned heavily in media; absent from latest 10-K/filing\n` +
+    `- Company highlights Z; analysts focus on risk W\n\n` +
+    `SOURCES:\n` +
+    `- company_sources: URLs that are ONLY official IR / SEC / earnings (same scope as company narrative).\n` +
+    `- media_sources: URLs that are ONLY third-party (same scope as media narrative). Never put a company official URL in media_sources.\n` +
+    `- items: same objects as company_sources + media_sources combined (dedupe by URL).\n\n` +
     `Respond with ONLY valid JSON (no markdown fences) in this exact shape:\n` +
     `{\n` +
-    `  "factual_gaps": [\n` +
-    `    "Company reported $X revenue; analyst consensus expected $Y → $Z difference",\n` +
-    `    "Topic X mentioned N times in media coverage this quarter but absent from latest 10-K/earnings call"\n` +
-    `  ],\n` +
-    `  "company_narrative": "3-5 sentence neutral summary of what the company officially says. Cite specific filings or statements.",\n` +
+    `  "factual_gaps": [ string ],\n` +
+    `  "company_narrative": string,\n` +
     `  "company_sources": [\n` +
-    `    { "title": string, "url": string (https), "source": string|null, "snippet": string|null, "published_at": string|null }\n` +
+    `    { "title": string, "url": string, "source": string|null, "snippet": string|null, "published_at": string|null }\n` +
     `  ],\n` +
-    `  "media_narrative": "3-5 sentence neutral summary of what media and analysts are reporting. No editorialising.",\n` +
+    `  "media_narrative": string,\n` +
     `  "media_sources": [\n` +
-    `    { "title": string, "url": string (https), "source": string|null, "snippet": string|null, "published_at": string|null }\n` +
+    `    { "title": string, "url": string, "source": string|null, "snippet": string|null, "published_at": string|null }\n` +
     `  ],\n` +
-    `  "synthesis": "2-3 sentence factual overview combining both narratives.",\n` +
-    `  "items": [ /* all sources combined, same schema as above */ ]\n` +
+    `  "synthesis": string,\n` +
+    `  "items": [ /* union of company_sources and media_sources; same schema */ ]\n` +
     `}\n` +
-    `Cap factual_gaps at 5; cap each source array at 12; omit duplicates.`
+    `Cap factual_gaps at 5; cap company_sources and media_sources at 12 each; omit duplicate URLs.`
   )
 }
 
@@ -84,7 +92,11 @@ function rankResearchItems(items: Array<Record<string, unknown>>): Array<Record<
   })
 }
 
-function sanitizeItems(rawItems: unknown[], cap = 25): Array<Record<string, unknown>> {
+function sanitizeItems(
+  rawItems: unknown[],
+  cap = 25,
+  narrative_scope?: 'company' | 'media',
+): Array<Record<string, unknown>> {
   const items: Array<Record<string, unknown>> = []
   for (const row of rawItems) {
     if (!row || typeof row !== 'object') continue
@@ -92,13 +104,15 @@ function sanitizeItems(rawItems: unknown[], cap = 25): Array<Record<string, unkn
     const title = typeof o.title === 'string' ? o.title.trim() : ''
     const url   = typeof o.url   === 'string' ? o.url.trim()   : ''
     if (!title || !url.startsWith('http')) continue
-    items.push({
+    const base: Record<string, unknown> = {
       title,
       url,
       source:       typeof o.source       === 'string' ? o.source       : null,
       snippet:      typeof o.snippet      === 'string' ? o.snippet      : null,
       published_at: typeof o.published_at === 'string' ? o.published_at : null,
-    })
+    }
+    if (narrative_scope) base.narrative_scope = narrative_scope
+    items.push(base)
     if (items.length >= cap) break
   }
   return items
@@ -148,16 +162,33 @@ function parseResponse(content: string): {
   }
 
   // Merge all sources into items[]
-  const companySources = Array.isArray(obj.company_sources) ? sanitizeItems(obj.company_sources, 12) : []
-  const mediaSources   = Array.isArray(obj.media_sources)   ? sanitizeItems(obj.media_sources,   12) : []
-  const legacyItems    = Array.isArray(obj.items)            ? sanitizeItems(obj.items,           25) : []
+  const companySources = Array.isArray(obj.company_sources)
+    ? sanitizeItems(obj.company_sources, 12, 'company')
+    : []
+  const mediaSources = Array.isArray(obj.media_sources)
+    ? sanitizeItems(obj.media_sources, 12, 'media')
+    : []
+  const legacyItems = Array.isArray(obj.items) ? sanitizeItems(obj.items, 25) : []
 
-  // Deduplicate by URL, prefer typed sources
+  // Deduplicate by URL — company rows first, then media, then untagged legacy (score URL for bucket).
   const urlSeen = new Set<string>()
   const items: Array<Record<string, unknown>> = []
-  for (const item of [...companySources, ...mediaSources, ...legacyItems]) {
+  for (const item of [...companySources, ...mediaSources]) {
     const url = item.url as string
-    if (!urlSeen.has(url)) { urlSeen.add(url); items.push(item) }
+    if (!urlSeen.has(url)) {
+      urlSeen.add(url)
+      items.push(item)
+    }
+    if (items.length >= 25) break
+  }
+  for (const item of legacyItems) {
+    const url = item.url as string
+    if (urlSeen.has(url)) continue
+    urlSeen.add(url)
+    if (!item.narrative_scope) {
+      item.narrative_scope = scoreResearchUrl(url) >= 55 ? 'company' : 'media'
+    }
+    items.push(item)
     if (items.length >= 25) break
   }
 
@@ -217,7 +248,7 @@ Deno.serve(async (req) => {
           {
             role: 'system',
             content:
-              'You have access to web search. Prefer URLs on the issuer official domain, investor relations, press/newsroom, and sec.gov. Avoid YouTube and general social unless it is clearly the company official channel. Return only valid JSON arrays as instructed. No markdown.',
+              'You have access to web search. Enforce strict source separation at all times: company narrative and company_sources must use only official IR, SEC filings, and company press releases; media narrative and media_sources must use only independent third-party sources — never the company website or company press releases. Remain neutral: no sentiment, no investment advice. Return only valid JSON as instructed. No markdown fences.',
           },
           {
             role: 'user',

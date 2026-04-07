@@ -6,6 +6,8 @@ export type ResearchNewsItem = {
   source?: string | null
   snippet?: string | null
   published_at?: string | null
+  /** From Edge Function — strict bucket; when missing, UI falls back to URL heuristics. */
+  narrative_scope?: 'company' | 'media'
 }
 
 export type FactualGap = { text: string } | string

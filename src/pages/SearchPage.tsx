@@ -8,6 +8,7 @@ import { PILOT_COMPANIES } from '@/data/pilot-universe'
 import { searchPilotCompanies } from '@/data/queries'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 import type { DbCompany } from '@/lib/supabase/monitoringTypes'
+import { resolveCompanyLogoUrl } from '@/lib/companyLogo'
 import { fetchCompaniesForSearch } from '@/lib/supabase/monitoringQueries'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 
@@ -110,37 +111,35 @@ export function SearchPage() {
               <li key={`pilot-${c.slug}`}>
                 <Link
                   to={`/app/company/${c.slug}`}
-                  className="group flex items-start gap-4 px-6 py-5 transition-colors hover:bg-white/60 sm:px-8"
+                  className="group flex items-center gap-4 px-6 py-4 transition-colors hover:bg-white/70 sm:px-8"
                 >
                   <CompanyLogo
                     name={c.name}
                     ticker={c.ticker}
                     logoUrl={c.logoUrl}
                     size="md"
-                    className="shadow-[0_6px_20px_rgba(12,13,17,0.05)]"
+                    className="shadow-[0_4px_16px_rgba(12,13,17,0.04)]"
                   />
-                  <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="font-medium tracking-tight text-ink group-hover:text-accent">
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="font-semibold tracking-tight text-ink group-hover:text-accent">
                       {c.name}
                     </span>
-                    <span className="text-[14px] leading-relaxed text-ink-muted">
-                      {c.tagline}
-                    </span>
+                    <span className="line-clamp-1 text-[14px] text-ink-muted">{c.tagline}</span>
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1 pt-0.5">
+                  <div className="flex shrink-0 items-center gap-2">
                     {c.ticker ? (
-                      <span className="rounded-lg border border-black/[0.06] bg-white/80 px-2.5 py-1 font-mono text-[12px] font-medium tabular-nums text-ink">
+                      <span className="font-mono text-[13px] font-medium tabular-nums text-ink-muted">
                         {c.ticker}
                       </span>
                     ) : (
                       <span className="text-[12px] text-ink-subtle">—</span>
                     )}
                     {c.exchange ? (
-                      <span className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
-                        {c.exchange}
-                      </span>
+                      <span className="hidden text-[11px] text-ink-subtle sm:inline">{c.exchange}</span>
                     ) : null}
-                    <span className="text-[10px] font-medium uppercase text-ink-subtle">Pilot</span>
+                    <span className="text-[15px] text-ink-subtle" aria-hidden>
+                      ›
+                    </span>
                   </div>
                 </Link>
               </li>
@@ -149,37 +148,36 @@ export function SearchPage() {
               <li key={`inv-${c.slug}`}>
                 <Link
                   to={`/app/company/${c.slug}`}
-                  className="group flex items-start gap-4 px-6 py-5 transition-colors hover:bg-white/60 sm:px-8"
+                  className="group flex items-center gap-4 px-6 py-4 transition-colors hover:bg-white/70 sm:px-8"
                 >
                   <CompanyLogo
                     name={c.name}
                     ticker={c.ticker}
+                    logoUrl={resolveCompanyLogoUrl({ explicit: c.logo_url })}
                     size="md"
-                    className="shadow-[0_6px_20px_rgba(12,13,17,0.05)]"
+                    className="shadow-[0_4px_16px_rgba(12,13,17,0.04)]"
                   />
-                  <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="font-medium tracking-tight text-ink group-hover:text-accent">
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="font-semibold tracking-tight text-ink group-hover:text-accent">
                       {c.name}
                     </span>
-                    <span className="text-[14px] leading-relaxed text-ink-muted">
+                    <span className="line-clamp-1 text-[14px] text-ink-muted">
                       {c.tagline ?? '—'}
                     </span>
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1 pt-0.5">
+                  <div className="flex shrink-0 items-center gap-2">
                     {c.ticker ? (
-                      <span className="rounded-lg border border-black/[0.06] bg-white/80 px-2.5 py-1 font-mono text-[12px] font-medium tabular-nums text-ink">
+                      <span className="font-mono text-[13px] font-medium tabular-nums text-ink-muted">
                         {c.ticker}
                       </span>
                     ) : (
                       <span className="text-[12px] text-ink-subtle">—</span>
                     )}
-                    {c.exchange ? (
-                      <span className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
-                        {c.exchange}
-                      </span>
-                    ) : null}
-                    <span className="text-[10px] font-medium uppercase text-accent">
-                      {c.universe_source === 'sec' ? 'SEC' : 'Inventory'}
+                    <span className="hidden text-[10px] font-medium uppercase text-ink-subtle sm:inline">
+                      {c.universe_source === 'sec' ? 'SEC' : 'Inv'}
+                    </span>
+                    <span className="text-[15px] text-ink-subtle" aria-hidden>
+                      ›
                     </span>
                   </div>
                 </Link>

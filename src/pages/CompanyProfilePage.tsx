@@ -9,6 +9,7 @@ import type { MonitoredSource } from '@/data/types'
 import { useCompanyMonitoring } from '@/hooks/useCompanyMonitoring'
 import { useReadUpdates } from '@/hooks/useReadUpdates'
 import { useWatchlist } from '@/hooks/useWatchlist'
+import { resolveCompanyLogoUrl } from '@/lib/companyLogo'
 import { resolveProfileCompany } from '@/lib/companyProfileView'
 import { cn } from '@/lib/cn'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
@@ -110,58 +111,61 @@ export function CompanyProfilePage() {
   const dbDocuments = bundle?.documents ?? []
   const fetchLogs = (bundle?.fetchLogs ?? []).slice(0, 5)
 
+  const headerLogoUrl = resolveCompanyLogoUrl({
+    explicit: view.logoUrl,
+    fallbackBaseUrls: (bundle?.sources ?? []).map((s) => s.base_url),
+  })
+
   return (
     <Container>
-      <header className="mb-10 flex flex-col gap-6 sm:mb-12 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 gap-4 sm:gap-5">
-          <CompanyLogo
-            name={view.name}
-            ticker={view.ticker}
-            logoUrl={view.logoUrl}
-            size="lg"
-            className="shadow-[0_8px_28px_rgba(12,13,17,0.06)]"
-          />
-          <div className="min-w-0">
-            <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-ink-subtle">
-              Company
+      {/* Full-bleed hero — reads as a header, not another card */}
+      <header className="relative -mx-5 mb-10 overflow-hidden rounded-b-[1.75rem] bg-gradient-to-b from-[var(--color-accent-soft)] to-transparent px-5 pb-10 pt-6 sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10">
+        <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 gap-4 sm:gap-6">
+            <CompanyLogo
+              name={view.name}
+              ticker={view.ticker}
+              logoUrl={headerLogoUrl}
+              size="lg"
+              className="shadow-[0_8px_28px_rgba(12,13,17,0.06)]"
+            />
+            <div className="min-w-0 pt-0.5">
               {view.isDbOnly ? (
-                <span className="ml-2 rounded-md bg-accent-soft px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal text-ink-muted">
-                  Inventory
-                </span>
+                <p className="text-[12px] font-medium text-ink-subtle">
+                  <span className="rounded-full bg-white/60 px-2.5 py-0.5 dark:bg-white/10">
+                    Inventory
+                  </span>
+                </p>
               ) : null}
-            </p>
-            <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h1 className="text-3xl font-medium tracking-[-0.03em] text-ink sm:text-[2rem]">
+              <h1 className="mt-1 text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.035em] text-ink sm:text-[2.25rem]">
                 {view.name}
               </h1>
               {view.ticker ? (
-                <span className="rounded-lg border border-stroke bg-[var(--segment-active-bg)] px-2.5 py-1 font-mono text-[13px] font-medium tabular-nums text-ink">
+                <p className="mt-2 font-mono text-[14px] tabular-nums text-ink-muted">
                   {view.ticker}
-                  {view.exchange ? (
-                    <span className="ml-1.5 text-ink-subtle">· {view.exchange}</span>
-                  ) : null}
-                </span>
+                  {view.exchange ? <span className="text-ink-subtle"> · {view.exchange}</span> : null}
+                </p>
+              ) : null}
+              {view.tagline ? (
+                <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-ink-muted">{view.tagline}</p>
               ) : null}
             </div>
-            <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-ink-muted">
-              {view.tagline}
-            </p>
           </div>
-        </div>
-        <div className="flex shrink-0 flex-col gap-2 sm:items-end">
-          <Button
-            type="button"
-            variant={watched ? 'secondary' : 'primary'}
-            className="min-w-[11rem] px-5 py-2.5"
-            onClick={() => toggle(view.slug)}
-          >
-            {watched ? 'On watchlist' : 'Watch'}
-          </Button>
-          {watched ? (
-            <span className="text-center text-[12px] text-ink-subtle sm:text-right">
-              Synced to your account when Supabase is connected.
-            </span>
-          ) : null}
+          <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+            <Button
+              type="button"
+              variant={watched ? 'secondary' : 'primary'}
+              className="min-w-[11rem] rounded-full px-6 py-2.5"
+              onClick={() => toggle(view.slug)}
+            >
+              {watched ? 'On watchlist' : 'Watch'}
+            </Button>
+            {watched ? (
+              <span className="text-center text-[12px] text-ink-subtle sm:max-w-[11rem] sm:text-right">
+                Saved to your watchlist.
+              </span>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -174,8 +178,10 @@ export function CompanyProfilePage() {
         </p>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-        <Card>
+      <CompanyResearchSection slug={view.slug} companyName={view.name} ticker={view.ticker} />
+
+      <div className="mt-12 grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <Card className="border-black/[0.06] bg-white/55 shadow-none dark:bg-white/[0.04]">
           <h2 className="text-[15px] font-medium text-ink">Overview</h2>
           <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
             {view.overview}
@@ -186,7 +192,7 @@ export function CompanyProfilePage() {
           </p>
         </Card>
 
-        <Card>
+        <Card className="border-black/[0.06] bg-white/55 shadow-none dark:bg-white/[0.04]">
           <h2 className="text-[15px] font-medium text-ink">Monitoring</h2>
           <p className="mt-1 text-[13px] text-ink-subtle">
             Last checked (company):{' '}
@@ -291,12 +297,6 @@ export function CompanyProfilePage() {
           </p>
         </Card>
       </div>
-
-      <CompanyResearchSection
-        slug={view.slug}
-        companyName={view.name}
-        ticker={view.ticker}
-      />
 
       <div className="mt-10 space-y-8">
         {isSupabaseConfigured() && dbDocuments.length > 0 ? (

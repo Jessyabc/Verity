@@ -8,6 +8,8 @@ export type DbCompany = {
   exchange: string | null
   tagline: string | null
   overview: string | null
+  /** Full HTTPS URL to logo or favicon (optional; may be derived from IR base_url in UI) */
+  logo_url?: string | null
   /** SEC CIK when imported from SEC ticker file */
   cik?: string | null
   /** manual | sec | pilot_import */

@@ -26,10 +26,12 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { CompanyLogo } from '@/components/CompanyLogo'
 import { LiquidGlassView } from '@/components/LiquidGlass'
 import { useSidebar } from '@/components/Sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
+import { resolveCompanyLogoUrl } from '@/lib/companyLogo'
 import { formatAgo, formatUnknownError } from '@/lib/format'
 import { searchCompanies, type SearchCompanyRow } from '@/lib/companySearch'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
@@ -53,65 +55,56 @@ type CardProps = {
   colors: ReturnType<typeof useVerityPalette>
   onPress: () => void
   onRemove: () => void
+  isLast: boolean
 }
 
-function CompanyCard({ company, research, colors, onPress, onRemove }: CardProps) {
+function CompanyCard({ company, research, colors, onPress, onRemove, isLast }: CardProps) {
   const summary = research?.synthesis ?? research?.items?.[0]?.snippet ?? null
   const gaps = Array.isArray(research?.factual_gaps) ? (research!.factual_gaps as unknown[]) : []
+
+  const subtitle =
+    gaps.length > 0
+      ? `${gaps.length} open gap${gaps.length !== 1 ? 's' : ''}${
+          research?.fetched_at ? ` · ${formatAgo(research.fetched_at)}` : ''
+        }`
+      : summary
+        ? summary
+        : research?.fetched_at
+          ? `Updated ${formatAgo(research.fetched_at)}`
+          : 'Tap to open'
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
-        styles.card,
-        {
-          backgroundColor: colors.surfaceSolid,
-          borderColor: colors.stroke,
-          opacity: pressed ? 0.93 : 1,
-        },
+        styles.listRow,
+        !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.stroke },
+        { opacity: pressed ? 0.85 : 1 },
       ]}
     >
-      <View style={styles.cardHeader}>
-        <View style={styles.cardMeta}>
-          <Text style={[styles.cardName, { color: colors.ink }]} numberOfLines={1}>
-            {company.name}
+      <CompanyLogo
+        name={company.name}
+        ticker={company.ticker}
+        logoUrl={resolveCompanyLogoUrl({ explicit: company.logo_url })}
+        size="sm"
+      />
+      <View style={styles.listRowMain}>
+        <Text style={[styles.cardName, { color: colors.ink }]} numberOfLines={1}>
+          {company.name}
+        </Text>
+        {(company.ticker || company.exchange) ? (
+          <Text style={[styles.cardTicker, { color: colors.inkMuted }]} numberOfLines={1}>
+            {[company.ticker, company.exchange].filter(Boolean).join(' · ')}
           </Text>
-          {(company.ticker || company.exchange) ? (
-            <Text style={[styles.cardTicker, { color: colors.inkMuted }]}>
-              {[company.ticker, company.exchange].filter(Boolean).join(' · ')}
-            </Text>
-          ) : null}
-        </View>
-        <Pressable
-          onPress={onRemove}
-          style={[styles.removeBtn, { borderColor: colors.stroke }]}
-          hitSlop={8}
-        >
-          <Text style={[styles.removeBtnText, { color: colors.inkSubtle }]}>✕</Text>
-        </Pressable>
+        ) : null}
+        <Text style={[styles.listSubtitle, { color: colors.inkSubtle }]} numberOfLines={1}>
+          {subtitle}
+        </Text>
       </View>
-
-      {gaps.length > 0 ? (
-        <View style={[styles.gapBadge, { backgroundColor: colors.accentSoft }]}>
-          <Text style={[styles.gapBadgeText, { color: colors.accent }]}>
-            {gaps.length} factual gap{gaps.length !== 1 ? 's' : ''} this quarter
-          </Text>
-        </View>
-      ) : summary ? (
-        <Text style={[styles.cardSummary, { color: colors.inkMuted }]} numberOfLines={2}>
-          {summary}
-        </Text>
-      ) : (
-        <Text style={[styles.cardNoResearch, { color: colors.inkSubtle }]}>
-          No research yet — tap to run
-        </Text>
-      )}
-
-      {research?.fetched_at ? (
-        <Text style={[styles.cardAge, { color: colors.inkSubtle }]}>
-          Updated {formatAgo(research.fetched_at)}
-        </Text>
-      ) : null}
+      <Text style={[styles.chevron, { color: colors.inkSubtle }]} aria-hidden>›</Text>
+      <Pressable onPress={onRemove} style={styles.removeIconHit} hitSlop={12}>
+        <Text style={[styles.removeBtnText, { color: colors.inkSubtle }]}>✕</Text>
+      </Pressable>
     </Pressable>
   )
 }
@@ -254,6 +247,12 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, colors, atCap }
                     }}
                     disabled={inList}
                   >
+                    <CompanyLogo
+                      name={item.name}
+                      ticker={item.ticker}
+                      logoUrl={resolveCompanyLogoUrl({ explicit: item.logo_url })}
+                      size="sm"
+                    />
                     <View style={styles.resultText}>
                       <Text style={[styles.resultName, { color: colors.ink }]} numberOfLines={1}>
                         {item.name}
@@ -400,17 +399,20 @@ export default function WatchlistScreen() {
           data={companies}
           keyExtractor={(c) => c.slug}
           contentContainerStyle={{
-            paddingHorizontal: space.lg,
-            paddingTop: space.md,
+            marginHorizontal: space.lg,
+            marginTop: space.sm,
             paddingBottom: insets.bottom + 110,
+            borderRadius: radius.lg,
+            overflow: 'hidden',
+            backgroundColor: colors.surfaceSolid,
           }}
-          ItemSeparatorComponent={() => <View style={{ height: space.sm }} />}
           showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <CompanyCard
               company={item}
               research={researchMap.get(item.slug)}
               colors={colors}
+              isLast={index === companies.length - 1}
               onPress={() => router.push(`/company/${item.slug}`)}
               onRemove={() => void handleRemove(item.slug)}
             />
@@ -480,38 +482,20 @@ const styles = StyleSheet.create({
   companyCount:{ fontFamily: font.regular, fontSize: 12 },
   err:         { fontFamily: font.regular, fontSize: 14, marginHorizontal: space.lg, marginTop: space.sm },
 
-  card: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: space.lg,
-  },
-  cardHeader: {
+  listRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: space.sm,
-    marginBottom: space.sm,
+    alignItems: 'center',
+    gap: space.md,
+    paddingHorizontal: space.md,
+    paddingVertical: 14,
   },
-  cardMeta:       { flex: 1, minWidth: 0 },
-  cardName:       { fontFamily: font.semi, fontSize: 17, letterSpacing: -0.3 },
+  listRowMain: { flex: 1, minWidth: 0 },
+  listSubtitle: { fontFamily: font.regular, fontSize: 12, marginTop: 4, lineHeight: 16 },
+  chevron:      { fontSize: 20, fontWeight: '300', marginRight: -4 },
+  removeIconHit: { padding: 6 },
+  removeBtnText: { fontSize: 13 },
+  cardName:       { fontFamily: font.semi, fontSize: 16, letterSpacing: -0.3 },
   cardTicker:     { fontFamily: font.medium, fontSize: 12, marginTop: 2 },
-  removeBtn: {
-    width: 26, height: 26, borderRadius: 13,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  removeBtnText:  { fontSize: 11 },
-  gapBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: 8,
-    paddingHorizontal: space.sm,
-    paddingVertical: 3,
-    marginBottom: space.xs,
-  },
-  gapBadgeText:   { fontFamily: font.semi, fontSize: 12 },
-  cardSummary:    { fontFamily: font.regular, fontSize: 13, lineHeight: 19 },
-  cardNoResearch: { fontFamily: font.regular, fontSize: 13, fontStyle: 'italic' },
-  cardAge:        { fontFamily: font.regular, fontSize: 11, marginTop: space.xs },
 
   empty: {
     flex: 1,

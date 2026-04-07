@@ -88,3 +88,16 @@ export function classifyItem(item: ResearchNewsItem): 'official' | 'external' {
   }
   return 'external'
 }
+
+/** Strict source separation: prefer `narrative_scope` from Edge cache; else heuristics. */
+export function itemIsCompanySource(item: ResearchNewsItem): boolean {
+  if (item.narrative_scope === 'company') return true
+  if (item.narrative_scope === 'media') return false
+  return classifyItem(item) === 'official'
+}
+
+export function itemIsMediaSource(item: ResearchNewsItem): boolean {
+  if (item.narrative_scope === 'media') return true
+  if (item.narrative_scope === 'company') return false
+  return classifyItem(item) === 'external'
+}
