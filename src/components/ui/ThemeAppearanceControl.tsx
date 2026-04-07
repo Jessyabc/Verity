@@ -1,5 +1,5 @@
-import type { ThemePreference } from '@/contexts/ThemeProvider'
-import { useTheme } from '@/contexts/ThemeProvider'
+import type { ThemePreference } from '@/contexts/theme-context'
+import { useTheme } from '@/contexts/useTheme'
 import { cn } from '@/lib/cn'
 
 const options: { value: ThemePreference; label: string }[] = [
