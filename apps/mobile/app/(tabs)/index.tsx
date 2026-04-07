@@ -14,7 +14,6 @@ import {
   Animated,
   FlatList,
   Keyboard,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -32,6 +31,7 @@ import { useWatchlistDigest } from '@/hooks/useWatchlistDigest'
 import { searchCompanies, type SearchCompanyRow } from '@/lib/companySearch'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import { fetchWatchlistSlugs } from '@/lib/watchlistApi'
+import { openUrl } from '@/lib/openUrl'
 import { font, space } from '@/constants/theme'
 import type { DigestSource } from '@/lib/watchlistDigest'
 
@@ -110,7 +110,7 @@ function DigestSection({ digestText, sources, generating, colors }: DigestProps)
           {sources.map((s, i) => (
             <Pressable
               key={`${s.url}-${i}`}
-              onPress={() => void Linking.openURL(s.url)}
+              onPress={() => void openUrl(s.url)}
               style={[styles.sourceRow, { borderTopColor: colors.stroke }]}
             >
               <View style={styles.sourceRowTop}>
@@ -132,6 +132,54 @@ function DigestSection({ digestText, sources, generating, colors }: DigestProps)
       <Text style={[styles.disclaimer, { color: colors.inkSubtle }]}>
         AI synthesis · not investment advice
       </Text>
+    </View>
+  )
+}
+
+// ─── Onboarding card ─────────────────────────────────────────────────────
+
+const STEPS = [
+  { num: '1', label: 'Search', detail: 'Find any public company above' },
+  { num: '2', label: 'Follow', detail: 'Add it to your watchlist with ★' },
+  { num: '3', label: 'Research', detail: 'Run AI research and ask Afaqi' },
+]
+
+function OnboardingCard({
+  colors,
+  onSearch,
+}: {
+  colors: ReturnType<typeof useVerityPalette>
+  onSearch: () => void
+}) {
+  return (
+    <View style={styles.onboarding}>
+      <Text style={[styles.onboardingTitle, { color: colors.ink }]}>
+        Start tracking companies
+      </Text>
+      <Text style={[styles.onboardingSubtitle, { color: colors.inkMuted }]}>
+        Verity monitors official sources and synthesizes what matters — earnings, filings, and news — into a single research trail.
+      </Text>
+
+      <View style={styles.steps}>
+        {STEPS.map((step) => (
+          <View key={step.num} style={styles.step}>
+            <View style={[styles.stepNum, { backgroundColor: colors.accentSoft }]}>
+              <Text style={[styles.stepNumText, { color: colors.accent }]}>{step.num}</Text>
+            </View>
+            <View style={styles.stepText}>
+              <Text style={[styles.stepLabel, { color: colors.ink }]}>{step.label}</Text>
+              <Text style={[styles.stepDetail, { color: colors.inkMuted }]}>{step.detail}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      <Pressable
+        style={[styles.onboardingBtn, { backgroundColor: colors.accent }]}
+        onPress={onSearch}
+      >
+        <Text style={styles.onboardingBtnText}>Search companies</Text>
+      </Pressable>
     </View>
   )
 }
@@ -302,7 +350,7 @@ export default function DiscoverScreen() {
         </Animated.View>
       </LiquidGlassView>
 
-      {/* ── Industry digest ── */}
+      {/* ── Industry digest or onboarding ── */}
       {user && watchlistSlugs.length > 0 ? (
         <DigestSection
           digestText={digest?.digest_text ?? ''}
@@ -311,9 +359,7 @@ export default function DiscoverScreen() {
           colors={colors}
         />
       ) : user ? (
-        <Text style={[styles.digestHint, { color: colors.inkSubtle }]}>
-          Add companies to your watchlist to see your industry digest here.
-        </Text>
+        <OnboardingCard colors={colors} onSearch={() => inputRef.current?.focus()} />
       ) : null}
     </ScrollView>
   )
@@ -421,6 +467,23 @@ const styles = StyleSheet.create({
   sourceRelevance: { fontFamily: font.regular, fontSize: 13, lineHeight: 18, marginTop: 4 },
   digestExpandToggle: { marginTop: space.sm },
   digestExpandText:   { fontFamily: font.semi, fontSize: 13 },
+
+  onboarding:         { marginTop: space.xs },
+  onboardingTitle:    { fontFamily: font.semi, fontSize: 22, letterSpacing: -0.4, marginBottom: space.sm },
+  onboardingSubtitle: { fontFamily: font.regular, fontSize: 15, lineHeight: 22, marginBottom: space.xl },
+  steps:              { gap: space.md, marginBottom: space.xl },
+  step:               { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
+  stepNum: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+    marginTop: 1,
+  },
+  stepNumText:    { fontFamily: font.bold, fontSize: 13 },
+  stepText:       { flex: 1 },
+  stepLabel:      { fontFamily: font.semi, fontSize: 15 },
+  stepDetail:     { fontFamily: font.regular, fontSize: 13, marginTop: 2 },
+  onboardingBtn:  { borderRadius: 12, paddingVertical: space.md, alignItems: 'center' },
+  onboardingBtnText: { fontFamily: font.semi, fontSize: 16, color: '#fff' },
   disclaimer: {
     fontFamily: font.regular,
     fontSize: 11,

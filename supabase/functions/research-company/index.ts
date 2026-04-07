@@ -11,16 +11,20 @@ function buildPrompt(companyName: string, ticker: string | null): string {
   const t = ticker ? ` (${ticker})` : ''
   return (
     `You are helping an equity research analyst stay current on ${companyName}${t}.\n\n` +
-    `Using web search, list distinct, recent items (last ~30 days when possible).\n\n` +
+    `Using web search, find distinct, recent developments (last ~30 days when possible).\n\n` +
     `SOURCE PRIORITY (strict):\n` +
     `1) Official company properties: investor relations, press/newsroom, corporate domain, official PDF releases.\n` +
     `2) SEC EDGAR (sec.gov) and other primary regulatory filings.\n` +
     `3) Major newswires and reputable business press.\n` +
-    `Do NOT use YouTube, TikTok, Facebook, Instagram, Reddit, or fan blogs unless they are the company's ONLY official channel (rare). Prefer pages on the company's own domain over third-party video or social URLs.\n\n` +
-    `Respond with ONLY valid JSON (no markdown fences): an array of objects, each with:\n` +
-    `"title" (string), "url" (string, https), "source" (string or null), "snippet" (string, 1–2 sentences or null), ` +
-    `"published_at" (ISO date string or human-readable date or null).\n` +
-    `Cap at 25 items; omit duplicates.`
+    `Do NOT use YouTube, TikTok, Facebook, Instagram, Reddit, or fan blogs.\n\n` +
+    `Respond with ONLY valid JSON (no markdown fences) in this exact shape:\n` +
+    `{\n` +
+    `  "synthesis": "3-4 sentence factual summary of the company's most important recent developments. Neutral tone, present tense where appropriate. No filler phrases.",\n` +
+    `  "items": [\n` +
+    `    { "title": string, "url": string (https), "source": string|null, "snippet": string (1-2 sentences)|null, "published_at": string|null }\n` +
+    `  ]\n` +
+    `}\n` +
+    `Cap items at 25; omit duplicates.`
   )
 }
 
@@ -67,30 +71,45 @@ function rankResearchItems(items: Array<Record<string, unknown>>): Array<Record<
   })
 }
 
-function parseItems(content: string): Array<Record<string, unknown>> {
+function parseResponse(content: string): { synthesis: string | null; items: Array<Record<string, unknown>> } {
   const trimmed = content.trim()
   let jsonStr = trimmed
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (fence) jsonStr = fence[1].trim()
+
   const parsed = JSON.parse(jsonStr) as unknown
-  if (!Array.isArray(parsed)) throw new Error('Model did not return a JSON array')
-  const out: Array<Record<string, unknown>> = []
-  for (const row of parsed) {
+
+  // Support both new {synthesis, items} shape and legacy bare array
+  let rawItems: unknown[]
+  let synthesis: string | null = null
+
+  if (Array.isArray(parsed)) {
+    rawItems = parsed
+  } else if (parsed && typeof parsed === 'object') {
+    const obj = parsed as Record<string, unknown>
+    synthesis = typeof obj.synthesis === 'string' ? obj.synthesis.trim() || null : null
+    rawItems = Array.isArray(obj.items) ? obj.items : []
+  } else {
+    throw new Error('Model did not return expected JSON shape')
+  }
+
+  const items: Array<Record<string, unknown>> = []
+  for (const row of rawItems) {
     if (!row || typeof row !== 'object') continue
     const o = row as Record<string, unknown>
     const title = typeof o.title === 'string' ? o.title.trim() : ''
     const url = typeof o.url === 'string' ? o.url.trim() : ''
     if (!title || !url.startsWith('http')) continue
-    out.push({
+    items.push({
       title,
       url,
       source: typeof o.source === 'string' ? o.source : null,
       snippet: typeof o.snippet === 'string' ? o.snippet : null,
       published_at: typeof o.published_at === 'string' ? o.published_at : null,
     })
-    if (out.length >= 25) break
+    if (items.length >= 25) break
   }
-  return out
+  return { synthesis, items }
 }
 
 Deno.serve(async (req) => {
@@ -167,7 +186,8 @@ Deno.serve(async (req) => {
     const content = pjson.choices?.[0]?.message?.content
     if (!content) throw new Error('Empty Perplexity response')
 
-    const items = rankResearchItems(parseItems(content))
+    const { synthesis, items: rawItems } = parseResponse(content)
+    const items = rankResearchItems(rawItems)
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim()
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim()
@@ -185,6 +205,7 @@ Deno.serve(async (req) => {
         company_name: companyName,
         ticker: body.ticker ?? null,
         items,
+        synthesis: synthesis ?? null,
         fetched_at: new Date().toISOString(),
         error: null,
         model,
@@ -194,7 +215,7 @@ Deno.serve(async (req) => {
 
     if (upErr) throw upErr
 
-    return new Response(JSON.stringify({ ok: true, items, model, count: items.length }), {
+    return new Response(JSON.stringify({ ok: true, items, synthesis, model, count: items.length }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (e) {

@@ -13,7 +13,6 @@ import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -54,6 +53,9 @@ import {
   savedUrlSet,
   type SavedHeadlineRow,
 } from '@/lib/savedHeadlines'
+import { openUrl } from '@/lib/openUrl'
+import { useMarketData, type UseMarketDataResult } from '@/hooks/useMarketData'
+import { formatMarketCap, changeColor } from '@/lib/finnhub'
 import { supabase } from '@/lib/supabase'
 import { font, radius, space } from '@/constants/theme'
 
@@ -80,7 +82,7 @@ function ClusterRow({ cluster, savedUrls, savedRows, onSaveToggle, colors }: Clu
   return (
     <View style={[styles.clusterBlock, { borderTopColor: colors.stroke }]}>
       {/* Primary headline */}
-      <Pressable onPress={() => void Linking.openURL(primary.url)} style={styles.clusterMain}>
+      <Pressable onPress={() => void openUrl(primary.url)} style={styles.clusterMain}>
         <View style={styles.clusterTitleRow}>
           <Text style={[styles.clusterTitle, { color: colors.accent }]} numberOfLines={2}>
             {primary.title}
@@ -126,7 +128,7 @@ function ClusterRow({ cluster, savedUrls, savedRows, onSaveToggle, colors }: Clu
             <Pressable
               key={`extra-${i}`}
               style={[styles.extraRow, { borderTopColor: colors.stroke }]}
-              onPress={() => void Linking.openURL(extra.url)}
+              onPress={() => void openUrl(extra.url)}
             >
               <Text style={[styles.extraTitle, { color: colors.accent }]} numberOfLines={2}>
                 {extra.title}
@@ -300,6 +302,7 @@ export default function CompanyScreen() {
   const { user }   = useAuth()
 
   const [company, setCompany]           = useState<CompanyRow | null>(null)
+  const { data: marketData } = useMarketData(company?.ticker)
   const [documents, setDocuments]       = useState<DbTrackedDocument[]>([])
   const [research, setResearch]         = useState<CompanyResearchRow | null>(null)
   const [savedRows, setSavedRows]       = useState<SavedHeadlineRow[]>([])
@@ -438,7 +441,8 @@ export default function CompanyScreen() {
   }
 
   const researchItems = research?.items ?? []
-  const summaryText   = researchItems[0]?.snippet ?? company.tagline ?? null
+  // Prefer the AI-generated synthesis; fall back to first snippet, then tagline
+  const summaryText = research?.synthesis ?? researchItems[0]?.snippet ?? company.tagline ?? null
 
   return (
     <View style={[styles.container, { backgroundColor: colors.canvas }]}>
@@ -475,6 +479,30 @@ export default function CompanyScreen() {
             </View>
           </View>
 
+          {marketData ? (
+            <View style={styles.marketRow}>
+              <Text style={[styles.price, { color: colors.ink }]}>
+                ${marketData.price.toFixed(2)}
+              </Text>
+              <Text style={[
+                styles.change,
+                { color: changeColor(marketData.changePct, colors.success, colors.danger, colors.inkSubtle) },
+              ]}>
+                {marketData.changePct >= 0 ? '+' : ''}{marketData.changePct.toFixed(2)}%
+              </Text>
+              {marketData.marketCap ? (
+                <Text style={[styles.marketMeta, { color: colors.inkSubtle }]}>
+                  {formatMarketCap(marketData.marketCap)}
+                </Text>
+              ) : null}
+              {marketData.peRatio ? (
+                <Text style={[styles.marketMeta, { color: colors.inkSubtle }]}>
+                  P/E {marketData.peRatio.toFixed(1)}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+
           {summaryText ? (
             <Text style={[styles.summary, { color: colors.inkMuted }]} numberOfLines={3}>
               {summaryText}
@@ -502,7 +530,7 @@ export default function CompanyScreen() {
                 <Pressable
                   key={doc.id}
                   style={[styles.docRow, { borderTopColor: colors.stroke }]}
-                  onPress={() => void Linking.openURL(doc.canonical_url)}
+                  onPress={() => void openUrl(doc.canonical_url)}
                 >
                   <Text style={[styles.docTitle, { color: colors.accent }]} numberOfLines={2}>
                     {shortDocumentTitle(doc)}
@@ -573,6 +601,17 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: space.md,
   },
+  marketRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: space.sm,
+    marginTop: space.sm,
+  },
+  price:      { fontFamily: font.semi, fontSize: 17, letterSpacing: -0.3 },
+  change:     { fontFamily: font.medium, fontSize: 14 },
+  marketMeta: { fontFamily: font.regular, fontSize: 13 },
+
   readerLink:     { marginTop: space.sm },
   readerLinkText: { fontFamily: font.semi, fontSize: 14 },
 

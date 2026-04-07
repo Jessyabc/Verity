@@ -13,6 +13,16 @@ export type SavedHeadlineRow = {
   saved_at: string
 }
 
+/** Fetch every headline saved by the current user, newest first. */
+export async function fetchAllSavedHeadlines(): Promise<SavedHeadlineRow[]> {
+  const { data, error } = await supabase
+    .from('saved_headlines')
+    .select('*')
+    .order('saved_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as SavedHeadlineRow[]
+}
+
 export async function fetchSavedHeadlines(companySlug: string): Promise<SavedHeadlineRow[]> {
   const { data, error } = await supabase
     .from('saved_headlines')

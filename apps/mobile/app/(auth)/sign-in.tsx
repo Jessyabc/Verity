@@ -14,6 +14,11 @@ import { Text, View } from '@/components/Themed'
 import { useAuth } from '@/contexts/AuthContext'
 import { palette } from '@/constants/theme'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { openUrl } from '@/lib/openUrl'
+
+// Update these URLs once your policy pages are live.
+const PRIVACY_URL = 'https://verity.so/privacy'
+const TERMS_URL   = 'https://verity.so/terms'
 
 export default function SignInScreen() {
   const { signInWithPassword, signUpWithPassword, signInWithMagicLink } = useAuth()
@@ -174,6 +179,16 @@ export default function SignInScreen() {
           Verity monitors official company sources only. Content is for informational purposes and
           is not investment advice.
         </Text>
+
+        <View style={styles.legalRow}>
+          <Pressable onPress={() => void openUrl(PRIVACY_URL)}>
+            <RNText style={styles.legalLink}>Privacy Policy</RNText>
+          </Pressable>
+          <RNText style={styles.legalSep}>·</RNText>
+          <Pressable onPress={() => void openUrl(TERMS_URL)}>
+            <RNText style={styles.legalLink}>Terms of Use</RNText>
+          </Pressable>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   )
@@ -244,4 +259,7 @@ const styles = StyleSheet.create({
   },
   outlineBtnText: { fontSize: 15, fontWeight: '600' },
   small: { marginTop: 20, fontSize: 12, opacity: 0.65 },
+  legalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 12, gap: 6 },
+  legalLink: { fontSize: 12, color: palette.accent, textDecorationLine: 'underline' },
+  legalSep:  { fontSize: 12, opacity: 0.4 },
 })

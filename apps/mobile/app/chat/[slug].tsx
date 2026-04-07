@@ -13,7 +13,6 @@ import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -26,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '@/contexts/AuthContext'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { fetchResearchCacheRow } from '@/lib/researchCache'
+import { openUrl } from '@/lib/openUrl'
 import { supabase } from '@/lib/supabase'
 import { font, radius, space } from '@/constants/theme'
 
@@ -78,7 +78,7 @@ function AssistantBubble({
               <Pressable
                 key={i}
                 style={[styles.sourceChip, { borderColor: colors.stroke, backgroundColor: colors.accentSoft }]}
-                onPress={() => void Linking.openURL(s.url)}
+                onPress={() => void openUrl(s.url)}
               >
                 <Text style={[styles.sourceChipText, { color: colors.accent }]} numberOfLines={1}>
                   {s.source ?? safeHostname(s.url)}
