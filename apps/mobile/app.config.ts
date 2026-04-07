@@ -30,8 +30,15 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.jessyabc.verity',
+    // buildNumber is auto-incremented by EAS on each production build.
+    // For local development leave this as '1'.
+    buildNumber: '1',
+    // Minimum iOS version for App Store submission (React Native 0.81 requires 15.1+)
+    deploymentTarget: '15.1',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      // Allow the system browser to open any https:// URL
+      LSApplicationQueriesSchemes: ['https', 'http'],
     },
   },
   android: {

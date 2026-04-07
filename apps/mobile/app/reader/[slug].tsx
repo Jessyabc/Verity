@@ -10,7 +10,6 @@ import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -23,6 +22,7 @@ import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { fetchResearchCacheRow, type CompanyResearchRow, type ResearchNewsItem } from '@/lib/researchCache'
 import { classifyItem } from '@/lib/headlineGrouping'
 import { formatAgo } from '@/lib/format'
+import { openUrl } from '@/lib/openUrl'
 import { font, radius, space } from '@/constants/theme'
 
 function safeHostname(url: string): string {
@@ -50,7 +50,7 @@ function SourceItem({
   return (
     <Pressable
       style={[styles.sourceItem, { borderTopColor: colors.stroke }]}
-      onPress={() => void Linking.openURL(item.url)}
+      onPress={() => void openUrl(item.url)}
     >
       <View style={[styles.tierBar, { backgroundColor: TIER_COLORS[tier] }]} />
       <View style={styles.sourceBody}>
@@ -166,6 +166,14 @@ export default function ReaderScreen() {
 
       <View style={[styles.divider, { backgroundColor: colors.stroke }]} />
 
+      {/* Synthesis paragraph */}
+      {research.synthesis ? (
+        <View style={[styles.synthesisCard, { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke }]}>
+          <Text style={[styles.synthesisKicker, { color: colors.inkSubtle }]}>SUMMARY</Text>
+          <Text style={[styles.synthesisText, { color: colors.ink }]}>{research.synthesis}</Text>
+        </View>
+      ) : null}
+
       {/* Company narrative */}
       {official.length > 0 ? (
         <View style={styles.section}>
@@ -267,6 +275,15 @@ const styles = StyleSheet.create({
   sourceTitle:   { fontFamily: font.semi, fontSize: 15, lineHeight: 21 },
   sourceSnippet: { fontFamily: font.regular, fontSize: 14, lineHeight: 21, marginTop: space.xs },
   sourceDomain:  { fontFamily: font.regular, fontSize: 12, marginTop: space.sm },
+
+  synthesisCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: space.lg,
+    marginBottom: space.xl,
+  },
+  synthesisKicker: { fontFamily: font.medium, fontSize: 11, letterSpacing: 1.8, marginBottom: space.sm },
+  synthesisText:   { fontFamily: font.regular, fontSize: 16, lineHeight: 26 },
 
   empty: { fontFamily: font.regular, fontSize: 15, textAlign: 'center', marginTop: space.xl },
 
