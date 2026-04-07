@@ -1,6 +1,11 @@
+import type { PostgrestError } from '@supabase/supabase-js'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { syncSessionForApi } from '@/lib/syncSessionForApi'
+
+function isDuplicateWatchlistKey(err: PostgrestError): boolean {
+  return err.code === '23505'
+}
 
 export async function fetchWatchlistSlugs(sb: SupabaseClient): Promise<string[]> {
   await syncSessionForApi()
@@ -19,7 +24,8 @@ export async function insertWatchlistSlug(
     user_id: userId,
     company_slug: slug,
   })
-  if (error) throw error
+  // Already on watchlist — treat as success (e.g. race or UI double-tap).
+  if (error && !isDuplicateWatchlistKey(error)) throw error
 }
 
 export async function deleteWatchlistSlug(sb: SupabaseClient, slug: string): Promise<void> {
