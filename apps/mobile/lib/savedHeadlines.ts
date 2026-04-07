@@ -11,6 +11,7 @@ export type SavedHeadlineRow = {
   snippet: string | null
   published_at: string | null
   saved_at: string
+  narrative_type: 'company' | 'media'
 }
 
 /** Fetch every headline saved by the current user, newest first. */
@@ -37,6 +38,7 @@ export async function saveHeadline(
   userId: string,
   companySlug: string,
   item: ResearchNewsItem,
+  narrativeType: 'company' | 'media' = 'media',
 ): Promise<void> {
   const { error } = await supabase.from('saved_headlines').upsert(
     {
@@ -47,6 +49,7 @@ export async function saveHeadline(
       source: item.source ?? null,
       snippet: item.snippet ?? null,
       published_at: item.published_at ?? null,
+      narrative_type: narrativeType,
     },
     { onConflict: 'user_id,company_slug,url' },
   )

@@ -8,12 +8,17 @@ export type ResearchNewsItem = {
   published_at?: string | null
 }
 
+export type FactualGap = { text: string } | string
+
 export type CompanyResearchRow = {
   slug: string
   company_name: string
   ticker: string | null
   items: ResearchNewsItem[]
   synthesis: string | null
+  company_narrative: string | null
+  media_narrative: string | null
+  factual_gaps: FactualGap[]
   fetched_at: string
   error: string | null
   model: string | null
@@ -27,6 +32,9 @@ function rowFromCache(data: Record<string, unknown>): CompanyResearchRow {
     ticker: (data.ticker as string | null) ?? null,
     items,
     synthesis: (data.synthesis as string | null) ?? null,
+    company_narrative: (data.company_narrative as string | null) ?? null,
+    media_narrative: (data.media_narrative as string | null) ?? null,
+    factual_gaps: Array.isArray(data.factual_gaps) ? (data.factual_gaps as FactualGap[]) : [],
     fetched_at: data.fetched_at as string,
     error: (data.error as string | null) ?? null,
     model: (data.model as string | null) ?? null,
@@ -36,7 +44,7 @@ function rowFromCache(data: Record<string, unknown>): CompanyResearchRow {
 export async function fetchResearchCacheRow(slug: string): Promise<CompanyResearchRow | null> {
   const { data, error } = await supabase
     .from('company_research_cache')
-    .select('slug, company_name, ticker, items, synthesis, fetched_at, error, model')
+    .select('slug, company_name, ticker, items, synthesis, company_narrative, media_narrative, factual_gaps, fetched_at, error, model')
     .eq('slug', slug)
     .maybeSingle()
   if (error) throw error
@@ -49,7 +57,7 @@ export async function fetchResearchCacheRowsForSlugs(slugs: string[]): Promise<C
   if (slugs.length === 0) return []
   const { data, error } = await supabase
     .from('company_research_cache')
-    .select('slug, company_name, ticker, items, synthesis, fetched_at, error, model')
+    .select('slug, company_name, ticker, items, synthesis, company_narrative, media_narrative, factual_gaps, fetched_at, error, model')
     .in('slug', slugs)
     .order('fetched_at', { ascending: false })
   if (error) throw error

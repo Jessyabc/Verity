@@ -10,21 +10,34 @@ import { requireSession } from '../_shared/requireSession.ts'
 function buildPrompt(companyName: string, ticker: string | null): string {
   const t = ticker ? ` (${ticker})` : ''
   return (
-    `You are helping an equity research analyst stay current on ${companyName}${t}.\n\n` +
-    `Using web search, find distinct, recent developments (last ~30 days when possible).\n\n` +
-    `SOURCE PRIORITY (strict):\n` +
-    `1) Official company properties: investor relations, press/newsroom, corporate domain, official PDF releases.\n` +
-    `2) SEC EDGAR (sec.gov) and other primary regulatory filings.\n` +
-    `3) Major newswires and reputable business press.\n` +
-    `Do NOT use YouTube, TikTok, Facebook, Instagram, Reddit, or fan blogs.\n\n` +
+    `You are a neutral equity research analyst. Your job is to surface the factual gap between ` +
+    `what ${companyName}${t} officially communicates (Company Narrative) and what independent ` +
+    `media, sell-side analysts, and financial journalists are reporting (Media & Analyst Narrative).\n\n` +
+    `RULES:\n` +
+    `- 100% factual and neutral. No interpretation, no sentiment, no advice.\n` +
+    `- Never use words like "bullish", "bearish", "buy", "sell", or "should".\n` +
+    `- Do NOT use YouTube, TikTok, Facebook, Instagram, Reddit, or fan blogs.\n\n` +
+    `SOURCE SPLIT:\n` +
+    `  Company Narrative → only: investor relations, press releases, 10-K, 10-Q, 8-K, earnings transcripts, SEC EDGAR.\n` +
+    `  Media & Analyst Narrative → only: WSJ, Bloomberg, Reuters, FT, Barron's, analyst notes, credible trade press.\n\n` +
     `Respond with ONLY valid JSON (no markdown fences) in this exact shape:\n` +
     `{\n` +
-    `  "synthesis": "3-4 sentence factual summary of the company's most important recent developments. Neutral tone, present tense where appropriate. No filler phrases.",\n` +
-    `  "items": [\n` +
-    `    { "title": string, "url": string (https), "source": string|null, "snippet": string (1-2 sentences)|null, "published_at": string|null }\n` +
-    `  ]\n` +
+    `  "factual_gaps": [\n` +
+    `    "Company reported $X revenue; analyst consensus expected $Y → $Z difference",\n` +
+    `    "Topic X mentioned N times in media coverage this quarter but absent from latest 10-K/earnings call"\n` +
+    `  ],\n` +
+    `  "company_narrative": "3-5 sentence neutral summary of what the company officially says. Cite specific filings or statements.",\n` +
+    `  "company_sources": [\n` +
+    `    { "title": string, "url": string (https), "source": string|null, "snippet": string|null, "published_at": string|null }\n` +
+    `  ],\n` +
+    `  "media_narrative": "3-5 sentence neutral summary of what media and analysts are reporting. No editorialising.",\n` +
+    `  "media_sources": [\n` +
+    `    { "title": string, "url": string (https), "source": string|null, "snippet": string|null, "published_at": string|null }\n` +
+    `  ],\n` +
+    `  "synthesis": "2-3 sentence factual overview combining both narratives.",\n` +
+    `  "items": [ /* all sources combined, same schema as above */ ]\n` +
     `}\n` +
-    `Cap items at 25; omit duplicates.`
+    `Cap factual_gaps at 5; cap each source array at 12; omit duplicates.`
   )
 }
 
@@ -71,7 +84,33 @@ function rankResearchItems(items: Array<Record<string, unknown>>): Array<Record<
   })
 }
 
-function parseResponse(content: string): { synthesis: string | null; items: Array<Record<string, unknown>> } {
+function sanitizeItems(rawItems: unknown[], cap = 25): Array<Record<string, unknown>> {
+  const items: Array<Record<string, unknown>> = []
+  for (const row of rawItems) {
+    if (!row || typeof row !== 'object') continue
+    const o = row as Record<string, unknown>
+    const title = typeof o.title === 'string' ? o.title.trim() : ''
+    const url   = typeof o.url   === 'string' ? o.url.trim()   : ''
+    if (!title || !url.startsWith('http')) continue
+    items.push({
+      title,
+      url,
+      source:       typeof o.source       === 'string' ? o.source       : null,
+      snippet:      typeof o.snippet      === 'string' ? o.snippet      : null,
+      published_at: typeof o.published_at === 'string' ? o.published_at : null,
+    })
+    if (items.length >= cap) break
+  }
+  return items
+}
+
+function parseResponse(content: string): {
+  synthesis: string | null
+  company_narrative: string | null
+  media_narrative: string | null
+  factual_gaps: string[]
+  items: Array<Record<string, unknown>>
+} {
   const trimmed = content.trim()
   let jsonStr = trimmed
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/)
@@ -79,37 +118,50 @@ function parseResponse(content: string): { synthesis: string | null; items: Arra
 
   const parsed = JSON.parse(jsonStr) as unknown
 
-  // Support both new {synthesis, items} shape and legacy bare array
-  let rawItems: unknown[]
-  let synthesis: string | null = null
-
+  // Support legacy bare array
   if (Array.isArray(parsed)) {
-    rawItems = parsed
-  } else if (parsed && typeof parsed === 'object') {
-    const obj = parsed as Record<string, unknown>
-    synthesis = typeof obj.synthesis === 'string' ? obj.synthesis.trim() || null : null
-    rawItems = Array.isArray(obj.items) ? obj.items : []
-  } else {
+    return {
+      synthesis: null,
+      company_narrative: null,
+      media_narrative: null,
+      factual_gaps: [],
+      items: sanitizeItems(parsed),
+    }
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
     throw new Error('Model did not return expected JSON shape')
   }
 
+  const obj = parsed as Record<string, unknown>
+
+  const synthesis          = typeof obj.synthesis          === 'string' ? obj.synthesis.trim()          || null : null
+  const company_narrative  = typeof obj.company_narrative  === 'string' ? obj.company_narrative.trim()  || null : null
+  const media_narrative    = typeof obj.media_narrative    === 'string' ? obj.media_narrative.trim()    || null : null
+
+  const factual_gaps: string[] = []
+  if (Array.isArray(obj.factual_gaps)) {
+    for (const g of obj.factual_gaps) {
+      if (typeof g === 'string' && g.trim()) factual_gaps.push(g.trim())
+      if (factual_gaps.length >= 5) break
+    }
+  }
+
+  // Merge all sources into items[]
+  const companySources = Array.isArray(obj.company_sources) ? sanitizeItems(obj.company_sources, 12) : []
+  const mediaSources   = Array.isArray(obj.media_sources)   ? sanitizeItems(obj.media_sources,   12) : []
+  const legacyItems    = Array.isArray(obj.items)            ? sanitizeItems(obj.items,           25) : []
+
+  // Deduplicate by URL, prefer typed sources
+  const urlSeen = new Set<string>()
   const items: Array<Record<string, unknown>> = []
-  for (const row of rawItems) {
-    if (!row || typeof row !== 'object') continue
-    const o = row as Record<string, unknown>
-    const title = typeof o.title === 'string' ? o.title.trim() : ''
-    const url = typeof o.url === 'string' ? o.url.trim() : ''
-    if (!title || !url.startsWith('http')) continue
-    items.push({
-      title,
-      url,
-      source: typeof o.source === 'string' ? o.source : null,
-      snippet: typeof o.snippet === 'string' ? o.snippet : null,
-      published_at: typeof o.published_at === 'string' ? o.published_at : null,
-    })
+  for (const item of [...companySources, ...mediaSources, ...legacyItems]) {
+    const url = item.url as string
+    if (!urlSeen.has(url)) { urlSeen.add(url); items.push(item) }
     if (items.length >= 25) break
   }
-  return { synthesis, items }
+
+  return { synthesis, company_narrative, media_narrative, factual_gaps, items }
 }
 
 Deno.serve(async (req) => {
@@ -186,7 +238,7 @@ Deno.serve(async (req) => {
     const content = pjson.choices?.[0]?.message?.content
     if (!content) throw new Error('Empty Perplexity response')
 
-    const { synthesis, items: rawItems } = parseResponse(content)
+    const { synthesis, company_narrative, media_narrative, factual_gaps, items: rawItems } = parseResponse(content)
     const items = rankResearchItems(rawItems)
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim()
@@ -206,6 +258,9 @@ Deno.serve(async (req) => {
         ticker: body.ticker ?? null,
         items,
         synthesis: synthesis ?? null,
+        company_narrative: company_narrative ?? null,
+        media_narrative: media_narrative ?? null,
+        factual_gaps: factual_gaps ?? [],
         fetched_at: new Date().toISOString(),
         error: null,
         model,
@@ -215,9 +270,10 @@ Deno.serve(async (req) => {
 
     if (upErr) throw upErr
 
-    return new Response(JSON.stringify({ ok: true, items, synthesis, model, count: items.length }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return new Response(
+      JSON.stringify({ ok: true, items, synthesis, company_narrative, media_narrative, factual_gaps, model, count: items.length }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    )
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return new Response(JSON.stringify({ error: msg }), {
