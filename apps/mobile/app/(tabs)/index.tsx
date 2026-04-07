@@ -1,22 +1,24 @@
 /**
- * Discover — the signed-in home screen.
+ * Watchlist — the landing screen.
  *
- * Layout (top → bottom):
- *  1. "Verity" wordmark + tagline
- *  2. Liquid Glass search bar — expands inline with results when focused
- *  3. Industry digest — cross-portfolio synthesis from watchlist
+ * Layout:
+ *   • Header: hamburger icon ← → "Watchlist" title
+ *   • FlatList of company cards (research summaries)
+ *   • Bottom: permanent glass search bar ("Add company to watchlist…")
+ *     → tapping expands a modal sheet with live search results
+ *   • Max 15 companies (upsell cap)
  */
 
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Animated,
   FlatList,
   Keyboard,
+  Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -25,374 +27,556 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { LiquidGlassView } from '@/components/LiquidGlass'
+import { useSidebar } from '@/components/Sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
-import { useWatchlistDigest } from '@/hooks/useWatchlistDigest'
+import { formatAgo } from '@/lib/format'
 import { searchCompanies, type SearchCompanyRow } from '@/lib/companySearch'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
-import { fetchWatchlistSlugs } from '@/lib/watchlistApi'
-import { openUrl } from '@/lib/openUrl'
-import { font, space } from '@/constants/theme'
-import type { DigestSource } from '@/lib/watchlistDigest'
+import {
+  deleteWatchlistSlug,
+  fetchCompaniesForSlugs,
+  fetchWatchlistSlugs,
+  insertWatchlistSlug,
+  type WatchlistCompanyRow,
+} from '@/lib/watchlistApi'
+import { fetchResearchCacheRowsForSlugs, type CompanyResearchRow } from '@/lib/researchCache'
+import { font, radius, space } from '@/constants/theme'
 
-const SEARCH_RESULTS_MAX_HEIGHT = 340
+const WATCHLIST_CAP = 15
 
-// ─── Source type pill ────────────────────────────────────────────────────
+// ─── Company card ──────────────────────────────────────────────────────────────
 
-const SOURCE_COLORS: Record<string, string> = {
-  paper:   '#4f46e5',
-  filing:  '#0f766e',
-  report:  '#b45309',
-  news:    '#475569',
-}
-
-function SourcePill({ type }: { type: string }) {
-  return (
-    <Text style={[styles.pill, { backgroundColor: SOURCE_COLORS[type] ?? '#475569' }]}>
-      {type.toUpperCase()}
-    </Text>
-  )
-}
-
-// ─── Digest section ───────────────────────────────────────────────────────
-
-const DIGEST_PREVIEW_LINES = 4
-
-type DigestProps = {
-  digestText: string
-  sources: DigestSource[]
-  generating: boolean
+type CardProps = {
+  company: WatchlistCompanyRow
+  research: CompanyResearchRow | undefined
   colors: ReturnType<typeof useVerityPalette>
+  onPress: () => void
+  onRemove: () => void
 }
 
-function DigestSection({ digestText, sources, generating, colors }: DigestProps) {
-  const [expanded, setExpanded] = useState(false)
-
-  if (generating && !digestText) {
-    return (
-      <View style={styles.digestGenerating}>
-        <ActivityIndicator size="small" color={colors.accent} style={{ marginRight: space.sm }} />
-        <Text style={[styles.digestGeneratingText, { color: colors.inkMuted }]}>
-          Synthesizing your portfolio…
-        </Text>
-      </View>
-    )
-  }
-
-  if (!digestText) return null
+function CompanyCard({ company, research, colors, onPress, onRemove }: CardProps) {
+  const summary = research?.synthesis ?? research?.items?.[0]?.snippet ?? null
+  const gaps = Array.isArray(research?.factual_gaps) ? (research!.factual_gaps as unknown[]) : []
 
   return (
-    <View style={styles.digestContainer}>
-      <View style={styles.digestHeader}>
-        <Text style={[styles.digestKicker, { color: colors.inkSubtle }]}>YOUR WORLD</Text>
-        {generating ? <ActivityIndicator size="small" color={colors.accent} /> : null}
-      </View>
-      <Text style={[styles.digestTitle, { color: colors.ink }]}>{"What's happening"}</Text>
-
-      <Text
-        style={[styles.digestBody, { color: colors.inkMuted }]}
-        numberOfLines={expanded ? undefined : DIGEST_PREVIEW_LINES}
-      >
-        {digestText}
-      </Text>
-
-      {/* Show more / less toggle */}
-      <Pressable onPress={() => setExpanded((v) => !v)} style={styles.digestExpandToggle}>
-        <Text style={[styles.digestExpandText, { color: colors.accent }]}>
-          {expanded ? 'Show less ↑' : 'Read full analysis ↓'}
-        </Text>
-      </Pressable>
-
-      {/* Sources — only visible when expanded */}
-      {expanded && sources.length > 0 ? (
-        <View style={styles.sourcesContainer}>
-          <Text style={[styles.sourcesKicker, { color: colors.inkSubtle }]}>SOURCES</Text>
-          {sources.map((s, i) => (
-            <Pressable
-              key={`${s.url}-${i}`}
-              onPress={() => void openUrl(s.url)}
-              style={[styles.sourceRow, { borderTopColor: colors.stroke }]}
-            >
-              <View style={styles.sourceRowTop}>
-                <SourcePill type={s.type} />
-                <Text style={[styles.sourceTitle, { color: colors.accent }]} numberOfLines={2}>
-                  {s.title}
-                </Text>
-              </View>
-              {s.relevance ? (
-                <Text style={[styles.sourceRelevance, { color: colors.inkMuted }]}>
-                  {s.relevance}
-                </Text>
-              ) : null}
-            </Pressable>
-          ))}
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.card,
+        {
+          backgroundColor: colors.surfaceSolid,
+          borderColor: colors.stroke,
+          opacity: pressed ? 0.93 : 1,
+        },
+      ]}
+    >
+      <View style={styles.cardHeader}>
+        <View style={styles.cardMeta}>
+          <Text style={[styles.cardName, { color: colors.ink }]} numberOfLines={1}>
+            {company.name}
+          </Text>
+          {(company.ticker || company.exchange) ? (
+            <Text style={[styles.cardTicker, { color: colors.inkMuted }]}>
+              {[company.ticker, company.exchange].filter(Boolean).join(' · ')}
+            </Text>
+          ) : null}
         </View>
-      ) : null}
-
-      <Text style={[styles.disclaimer, { color: colors.inkSubtle }]}>
-        AI synthesis · not investment advice
-      </Text>
-    </View>
-  )
-}
-
-// ─── Onboarding card ─────────────────────────────────────────────────────
-
-const STEPS = [
-  { num: '1', label: 'Search', detail: 'Find any public company above' },
-  { num: '2', label: 'Follow', detail: 'Add it to your watchlist with ★' },
-  { num: '3', label: 'Research', detail: 'Run AI research and ask Afaqi' },
-]
-
-function OnboardingCard({
-  colors,
-  onSearch,
-}: {
-  colors: ReturnType<typeof useVerityPalette>
-  onSearch: () => void
-}) {
-  return (
-    <View style={styles.onboarding}>
-      <Text style={[styles.onboardingTitle, { color: colors.ink }]}>
-        Start tracking companies
-      </Text>
-      <Text style={[styles.onboardingSubtitle, { color: colors.inkMuted }]}>
-        Verity monitors official sources and synthesizes what matters — earnings, filings, and news — into a single research trail.
-      </Text>
-
-      <View style={styles.steps}>
-        {STEPS.map((step) => (
-          <View key={step.num} style={styles.step}>
-            <View style={[styles.stepNum, { backgroundColor: colors.accentSoft }]}>
-              <Text style={[styles.stepNumText, { color: colors.accent }]}>{step.num}</Text>
-            </View>
-            <View style={styles.stepText}>
-              <Text style={[styles.stepLabel, { color: colors.ink }]}>{step.label}</Text>
-              <Text style={[styles.stepDetail, { color: colors.inkMuted }]}>{step.detail}</Text>
-            </View>
-          </View>
-        ))}
+        <Pressable
+          onPress={onRemove}
+          style={[styles.removeBtn, { borderColor: colors.stroke }]}
+          hitSlop={8}
+        >
+          <Text style={[styles.removeBtnText, { color: colors.inkSubtle }]}>✕</Text>
+        </Pressable>
       </View>
 
-      <Pressable
-        style={[styles.onboardingBtn, { backgroundColor: colors.accent }]}
-        onPress={onSearch}
-      >
-        <Text style={styles.onboardingBtnText}>Search companies</Text>
-      </Pressable>
-    </View>
+      {gaps.length > 0 ? (
+        <View style={[styles.gapBadge, { backgroundColor: colors.accentSoft }]}>
+          <Text style={[styles.gapBadgeText, { color: colors.accent }]}>
+            {gaps.length} factual gap{gaps.length !== 1 ? 's' : ''} this quarter
+          </Text>
+        </View>
+      ) : summary ? (
+        <Text style={[styles.cardSummary, { color: colors.inkMuted }]} numberOfLines={2}>
+          {summary}
+        </Text>
+      ) : (
+        <Text style={[styles.cardNoResearch, { color: colors.inkSubtle }]}>
+          No research yet — tap to run
+        </Text>
+      )}
+
+      {research?.fetched_at ? (
+        <Text style={[styles.cardAge, { color: colors.inkSubtle }]}>
+          Updated {formatAgo(research.fetched_at)}
+        </Text>
+      ) : null}
+    </Pressable>
   )
 }
 
-// ─── Main screen ─────────────────────────────────────────────────────────
+// ─── Search modal ─────────────────────────────────────────────────────────────
 
-export default function DiscoverScreen() {
+type SearchModalProps = {
+  visible: boolean
+  onClose: () => void
+  onSelect: (slug: string) => void
+  currentSlugs: string[]
+  colors: ReturnType<typeof useVerityPalette>
+  atCap: boolean
+}
+
+function SearchModal({ visible, onClose, onSelect, currentSlugs, colors, atCap }: SearchModalProps) {
+  const insets = useSafeAreaInsets()
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<SearchCompanyRow[]>([])
+  const [searching, setSearching] = useState(false)
+  const inputRef = useRef<TextInput>(null)
+  const slideAnim = useRef(new Animated.Value(300)).current
+
+  useEffect(() => {
+    if (visible) {
+      setQuery('')
+      setResults([])
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 200,
+        friction: 22,
+      }).start(() => inputRef.current?.focus())
+    } else {
+      Animated.spring(slideAnim, {
+        toValue: 300,
+        useNativeDriver: true,
+        tension: 220,
+        friction: 24,
+      }).start()
+    }
+  }, [visible, slideAnim])
+
+  useEffect(() => {
+    if (!visible) return
+    const t = setTimeout(async () => {
+      if (!isSupabaseConfigured()) return
+      setSearching(true)
+      try {
+        setResults(await searchCompanies(query, 20))
+      } catch {
+        setResults([])
+      } finally {
+        setSearching(false)
+      }
+    }, 180)
+    return () => clearTimeout(t)
+  }, [query, visible])
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <Pressable
+        style={styles.modalBackdrop}
+        onPress={() => { Keyboard.dismiss(); onClose() }}
+      />
+
+      <Animated.View
+        style={[
+          styles.searchPanel,
+          {
+            backgroundColor: colors.surfaceSolid,
+            paddingBottom: insets.bottom + space.sm,
+            transform: [{ translateY: slideAnim }],
+          },
+        ]}
+      >
+        <View style={[styles.handle, { backgroundColor: colors.stroke }]} />
+
+        {atCap ? (
+          <View style={styles.capMessage}>
+            <Text style={[styles.capTitle, { color: colors.ink }]}>Watchlist full</Text>
+            <Text style={[styles.capBody, { color: colors.inkMuted }]}>
+              You're tracking {WATCHLIST_CAP} companies — the maximum on the current plan.
+              Remove a company to add another.
+            </Text>
+          </View>
+        ) : (
+          <>
+            <View style={[styles.inputRow, { borderBottomColor: colors.stroke }]}>
+              <Text style={[styles.searchIcon, { color: colors.inkSubtle }]}>⌕</Text>
+              <TextInput
+                ref={inputRef}
+                style={[styles.input, { color: colors.ink }]}
+                placeholder="Search companies…"
+                placeholderTextColor={colors.inkSubtle}
+                value={query}
+                onChangeText={setQuery}
+                returnKeyType="search"
+                autoCapitalize="none"
+                autoCorrect={false}
+                clearButtonMode={Platform.OS === 'ios' ? 'while-editing' : 'never'}
+              />
+              {searching ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : null}
+            </View>
+
+            <FlatList
+              data={results}
+              keyExtractor={(item) => item.id}
+              keyboardShouldPersistTaps="handled"
+              style={styles.resultsList}
+              ListEmptyComponent={
+                !searching ? (
+                  <Text style={[styles.emptyResults, { color: colors.inkSubtle }]}>
+                    {query.length > 0 ? 'No matches' : 'Type a company name or ticker…'}
+                  </Text>
+                ) : null
+              }
+              renderItem={({ item }) => {
+                const inList = currentSlugs.includes(item.slug)
+                return (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.resultRow,
+                      {
+                        borderBottomColor: colors.stroke,
+                        backgroundColor: pressed ? colors.accentSoft : 'transparent',
+                        opacity: inList ? 0.5 : 1,
+                      },
+                    ]}
+                    onPress={() => {
+                      if (!inList) { Keyboard.dismiss(); onSelect(item.slug) }
+                    }}
+                    disabled={inList}
+                  >
+                    <View style={styles.resultText}>
+                      <Text style={[styles.resultName, { color: colors.ink }]} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      {item.exchange || item.ticker ? (
+                        <Text style={[styles.resultMeta, { color: colors.inkMuted }]} numberOfLines={1}>
+                          {[item.ticker, item.exchange].filter(Boolean).join(' · ')}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {inList ? (
+                      <Text style={[styles.inListLabel, { color: colors.accent }]}>★</Text>
+                    ) : (
+                      <Text style={[styles.addLabel, { color: colors.accent }]}>+ Add</Text>
+                    )}
+                  </Pressable>
+                )
+              }}
+            />
+          </>
+        )}
+      </Animated.View>
+    </Modal>
+  )
+}
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
+
+export default function WatchlistScreen() {
   const router   = useRouter()
   const insets   = useSafeAreaInsets()
   const colors   = useVerityPalette()
   const { user } = useAuth()
+  const { open: openSidebar } = useSidebar()
 
-  const [query, setQuery]           = useState('')
-  const [results, setResults]       = useState<SearchCompanyRow[]>([])
-  const [searching, setSearching]   = useState(false)
-  const [isFocused, setIsFocused]   = useState(false)
-  const [watchlistSlugs, setWatchlistSlugs] = useState<string[]>([])
+  const [companies, setCompanies]     = useState<WatchlistCompanyRow[]>([])
+  const [researchMap, setResearchMap] = useState<Map<string, CompanyResearchRow>>(new Map())
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState<string | null>(null)
+  const [showSearch, setShowSearch]   = useState(false)
 
-  const inputRef  = useRef<TextInput>(null)
-  const panelAnim = useRef(new Animated.Value(0)).current
-
-  const { digest, loading: digestLoading } = useWatchlistDigest(
-    user?.id ?? null,
-    watchlistSlugs,
-  )
-
-  useEffect(() => {
-    if (!user || !isSupabaseConfigured()) return
-    void fetchWatchlistSlugs(supabase).then(setWatchlistSlugs).catch(() => {})
+  const load = useCallback(async () => {
+    if (!user) { setCompanies([]); setLoading(false); return }
+    setLoading(true); setError(null)
+    try {
+      const slugs = await fetchWatchlistSlugs(supabase)
+      const [cos, rows] = await Promise.all([
+        fetchCompaniesForSlugs(supabase, slugs),
+        fetchResearchCacheRowsForSlugs(slugs),
+      ])
+      setCompanies(cos)
+      const map = new Map<string, CompanyResearchRow>()
+      for (const r of rows) map.set(r.slug, r)
+      setResearchMap(map)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
   }, [user])
 
-  const runSearch = useCallback(async (q: string) => {
-    if (!isSupabaseConfigured()) return
-    setSearching(true)
-    try {
-      const rows = await searchCompanies(q, 20)
-      setResults(rows)
-    } catch {
-      setResults([])
-    } finally {
-      setSearching(false)
-    }
-  }, [])
+  useFocusEffect(useCallback(() => { void load() }, [load]))
 
   useEffect(() => {
-    if (!isFocused) return
-    const t = setTimeout(() => void runSearch(query), 180)
-    return () => clearTimeout(t)
-  }, [query, isFocused, runSearch])
+    if (!user || companies.length === 0) return
+    const t = setInterval(() => {
+      void fetchResearchCacheRowsForSlugs(companies.map((c) => c.slug)).then((rows) => {
+        const map = new Map<string, CompanyResearchRow>()
+        for (const r of rows) map.set(r.slug, r)
+        setResearchMap(map)
+      }).catch(() => {})
+    }, 10 * 60 * 1000)
+    return () => clearInterval(t)
+  }, [user, companies])
 
-  const onFocus = () => {
-    setIsFocused(true)
-    void runSearch(query)
-    Animated.spring(panelAnim, {
-      toValue: 1, useNativeDriver: false, tension: 180, friction: 18,
-    }).start()
+  const handleAddCompany = async (slug: string) => {
+    setShowSearch(false)
+    if (!user) return
+    try {
+      await insertWatchlistSlug(supabase, user.id, slug)
+      await load()
+      router.push(`/company/${slug}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
   }
 
-  const onBlur = () => {
-    setTimeout(() => {
-      setIsFocused(false)
-      Animated.spring(panelAnim, {
-        toValue: 0, useNativeDriver: false, tension: 200, friction: 22,
-      }).start()
-    }, 120)
+  const handleRemove = async (slug: string) => {
+    try {
+      await deleteWatchlistSlug(supabase, slug)
+      setCompanies((prev) => prev.filter((c) => c.slug !== slug))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
   }
 
-  const onSelectCompany = (slug: string) => {
-    Keyboard.dismiss()
-    setIsFocused(false)
-    router.push(`/company/${slug}`)
-  }
-
-  const panelHeight = panelAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, SEARCH_RESULTS_MAX_HEIGHT],
-    extrapolate: 'clamp',
-  })
-  const panelOpacity = panelAnim.interpolate({
-    inputRange: [0, 0.4, 1],
-    outputRange: [0, 0, 1],
-  })
+  const atCap = companies.length >= WATCHLIST_CAP
 
   return (
-    <ScrollView
-      style={[styles.screen, { backgroundColor: colors.canvas }]}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + space.xl, paddingBottom: insets.bottom + 80 },
-      ]}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
-      {/* ── Wordmark + tagline ── */}
-      <View style={styles.hero}>
-        <Text style={[styles.wordmark, { color: colors.ink }]}>Verity</Text>
-        <Text style={[styles.tagline, { color: colors.inkMuted }]}>
-          Get a sense of what your businesses are doing
+    <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
+      {/* ── Header ── */}
+      <View
+        style={[
+          styles.header,
+          { paddingTop: insets.top + space.md, borderBottomColor: colors.stroke },
+        ]}
+      >
+        <Pressable style={styles.menuBtn} onPress={openSidebar} hitSlop={10}>
+          <View style={styles.hamburger}>
+            <View style={[styles.hLine, { backgroundColor: colors.ink }]} />
+            <View style={[styles.hLine, { backgroundColor: colors.ink }]} />
+            <View style={[styles.hLine, { backgroundColor: colors.ink, width: 15 }]} />
+          </View>
+        </Pressable>
+        <Text style={[styles.headerTitle, { color: colors.ink }]}>Watchlist</Text>
+        <Text style={[styles.companyCount, { color: colors.inkSubtle }]}>
+          {companies.length}/{WATCHLIST_CAP}
         </Text>
       </View>
 
-      {/* ── Liquid Glass search ── */}
-      <LiquidGlassView radius={22} style={styles.searchWrapper} innerStyle={{ paddingVertical: 0 }} shadow>
-        <View style={styles.inputRow}>
-          <Text style={[styles.searchIcon, { color: colors.inkSubtle }]}>⌕</Text>
-          <TextInput
-            ref={inputRef}
-            style={[styles.input, { color: colors.ink }]}
-            placeholder="Search companies…"
-            placeholderTextColor={colors.inkSubtle}
-            value={query}
-            onChangeText={setQuery}
-            onFocus={onFocus}
-            onBlur={onBlur}
-            returnKeyType="search"
-            autoCapitalize="none"
-            autoCorrect={false}
-            clearButtonMode={Platform.OS === 'ios' ? 'while-editing' : 'never'}
-          />
-          {searching ? (
-            <ActivityIndicator size="small" color={colors.accent} style={{ marginRight: space.sm }} />
-          ) : null}
-        </View>
-
-        <Animated.View style={{ height: panelHeight, opacity: panelOpacity, overflow: 'hidden' }}>
-          <View style={[styles.resultsDivider, { backgroundColor: colors.stroke }]} />
-          <FlatList
-            data={results}
-            keyExtractor={(item) => item.id}
-            keyboardShouldPersistTaps="handled"
-            scrollEnabled={false}
-            ListEmptyComponent={
-              !searching ? (
-                <Text style={[styles.emptyResults, { color: colors.inkSubtle }]}>
-                  {query.length > 0 ? 'No matches' : 'Browse companies…'}
-                </Text>
-              ) : null
-            }
-            renderItem={({ item }) => (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.resultRow,
-                  {
-                    borderBottomColor: colors.stroke,
-                    backgroundColor: pressed ? colors.stroke : 'transparent',
-                  },
-                ]}
-                onPress={() => onSelectCompany(item.slug)}
-              >
-                <View style={styles.resultText}>
-                  <Text style={[styles.resultName, { color: colors.ink }]} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  {item.exchange ? (
-                    <Text style={[styles.resultMeta, { color: colors.inkMuted }]} numberOfLines={1}>
-                      {[item.ticker, item.exchange].filter(Boolean).join(' · ')}
-                    </Text>
-                  ) : null}
-                </View>
-                {item.ticker ? (
-                  <Text style={[styles.resultTicker, { color: colors.inkSubtle }]}>
-                    {item.ticker}
-                  </Text>
-                ) : null}
-              </Pressable>
-            )}
-          />
-        </Animated.View>
-      </LiquidGlassView>
-
-      {/* ── Industry digest or onboarding ── */}
-      {user && watchlistSlugs.length > 0 ? (
-        <DigestSection
-          digestText={digest?.digest_text ?? ''}
-          sources={(digest?.sources ?? []) as DigestSource[]}
-          generating={digest?.is_generating ?? (digestLoading && !digest)}
-          colors={colors}
-        />
-      ) : user ? (
-        <OnboardingCard colors={colors} onSearch={() => inputRef.current?.focus()} />
+      {error ? (
+        <Text style={[styles.err, { color: colors.danger }]}>{error}</Text>
       ) : null}
-    </ScrollView>
+
+      {/* ── Company list ── */}
+      {loading ? (
+        <ActivityIndicator color={colors.accent} style={{ marginTop: space.xl }} />
+      ) : companies.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={[styles.emptyTitle, { color: colors.ink }]}>Your watchlist is empty</Text>
+          <Text style={[styles.emptyBody, { color: colors.inkMuted }]}>
+            Search for any public company below. Verity tracks the gap between what the company
+            officially says and what media and analysts are reporting.
+          </Text>
+          <Pressable
+            style={[styles.emptyBtn, { backgroundColor: colors.accent }]}
+            onPress={() => setShowSearch(true)}
+          >
+            <Text style={styles.emptyBtnText}>Add your first company</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <FlatList
+          data={companies}
+          keyExtractor={(c) => c.slug}
+          contentContainerStyle={{
+            paddingHorizontal: space.lg,
+            paddingTop: space.md,
+            paddingBottom: insets.bottom + 110,
+          }}
+          ItemSeparatorComponent={() => <View style={{ height: space.sm }} />}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <CompanyCard
+              company={item}
+              research={researchMap.get(item.slug)}
+              colors={colors}
+              onPress={() => router.push(`/company/${item.slug}`)}
+              onRemove={() => void handleRemove(item.slug)}
+            />
+          )}
+        />
+      )}
+
+      {/* ── Permanent bottom search bar ── */}
+      <View
+        style={[
+          styles.searchBarContainer,
+          { paddingBottom: insets.bottom + space.sm },
+        ]}
+      >
+        <LiquidGlassView
+          radius={20}
+          style={styles.searchBar}
+          innerStyle={{ paddingVertical: 0 }}
+          shadow
+        >
+          <Pressable
+            style={styles.searchBarInner}
+            onPress={() => setShowSearch(true)}
+            accessibilityRole="search"
+            accessibilityLabel="Add company to watchlist"
+          >
+            <Text style={[styles.searchBarIcon, { color: colors.inkSubtle }]}>⌕</Text>
+            <Text style={[styles.searchBarPlaceholder, { color: colors.inkSubtle }]}>
+              {atCap
+                ? `Watchlist full (${WATCHLIST_CAP}/${WATCHLIST_CAP})`
+                : 'Add company to watchlist…'}
+            </Text>
+          </Pressable>
+        </LiquidGlassView>
+      </View>
+
+      {/* ── Search modal ── */}
+      <SearchModal
+        visible={showSearch}
+        onClose={() => setShowSearch(false)}
+        onSelect={handleAddCompany}
+        currentSlugs={companies.map((c) => c.slug)}
+        colors={colors}
+        atCap={atCap}
+      />
+    </View>
   )
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen:  { flex: 1 },
-  content: { paddingHorizontal: space.lg },
+  screen: { flex: 1 },
 
-  hero: { marginBottom: space.xl + space.sm },
-  wordmark: {
-    fontFamily: font.bold,
-    fontSize: 42,
-    letterSpacing: -1.5,
-    lineHeight: 48,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: space.lg,
+    paddingBottom: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: space.md,
   },
-  tagline: {
+  menuBtn:     { padding: 4 },
+  hamburger:   { gap: 5 },
+  hLine:       { height: 1.5, borderRadius: 1 },
+  headerTitle: { flex: 1, fontFamily: font.semi, fontSize: 18, letterSpacing: -0.3 },
+  companyCount:{ fontFamily: font.regular, fontSize: 12 },
+  err:         { fontFamily: font.regular, fontSize: 14, marginHorizontal: space.lg, marginTop: space.sm },
+
+  card: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: space.lg,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: space.sm,
+    marginBottom: space.sm,
+  },
+  cardMeta:       { flex: 1, minWidth: 0 },
+  cardName:       { fontFamily: font.semi, fontSize: 17, letterSpacing: -0.3 },
+  cardTicker:     { fontFamily: font.medium, fontSize: 12, marginTop: 2 },
+  removeBtn: {
+    width: 26, height: 26, borderRadius: 13,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  removeBtnText:  { fontSize: 11 },
+  gapBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 8,
+    paddingHorizontal: space.sm,
+    paddingVertical: 3,
+    marginBottom: space.xs,
+  },
+  gapBadgeText:   { fontFamily: font.semi, fontSize: 12 },
+  cardSummary:    { fontFamily: font.regular, fontSize: 13, lineHeight: 19 },
+  cardNoResearch: { fontFamily: font.regular, fontSize: 13, fontStyle: 'italic' },
+  cardAge:        { fontFamily: font.regular, fontSize: 11, marginTop: space.xs },
+
+  empty: {
+    flex: 1,
+    paddingHorizontal: space.xl,
+    paddingTop: space.xxl,
+  },
+  emptyTitle: { fontFamily: font.semi, fontSize: 22, letterSpacing: -0.4 },
+  emptyBody: {
     fontFamily: font.regular,
-    fontSize: 17,
-    lineHeight: 24,
+    fontSize: 15,
+    lineHeight: 22,
     marginTop: space.sm,
-    maxWidth: 280,
+    marginBottom: space.xl,
   },
+  emptyBtn:     { borderRadius: radius.sm, paddingVertical: space.md, alignItems: 'center' },
+  emptyBtnText: { fontFamily: font.semi, color: '#fff', fontSize: 15 },
 
-  searchWrapper: { marginBottom: space.xl },
+  searchBarContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: space.lg,
+    right: space.lg,
+  },
+  searchBar: {},
+  searchBarInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: 15,
+  },
+  searchBarIcon:        { fontSize: 18, lineHeight: 22, marginTop: -1 },
+  searchBarPlaceholder: { fontFamily: font.regular, fontSize: 16 },
+
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  searchPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '75%',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 10,
+  },
+  handle: {
+    width: 36, height: 4, borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: space.md,
+    marginBottom: space.sm,
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: space.md,
-    paddingVertical: 14,
     gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   searchIcon: { fontSize: 18, lineHeight: 22, marginTop: -1 },
   input: {
@@ -402,11 +586,11 @@ const styles = StyleSheet.create({
     height: 22,
     padding: 0,
   },
-  resultsDivider: { height: StyleSheet.hairlineWidth },
+  resultsList: { maxHeight: 380 },
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: space.md,
+    paddingHorizontal: space.lg,
     paddingVertical: space.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: space.sm,
@@ -414,7 +598,8 @@ const styles = StyleSheet.create({
   resultText:   { flex: 1, minWidth: 0 },
   resultName:   { fontFamily: font.semi, fontSize: 15 },
   resultMeta:   { fontFamily: font.regular, fontSize: 13, marginTop: 2 },
-  resultTicker: { fontFamily: 'Courier', fontSize: 12, letterSpacing: 0.5 },
+  inListLabel:  { fontFamily: font.medium, fontSize: 16 },
+  addLabel:     { fontFamily: font.semi, fontSize: 13 },
   emptyResults: {
     fontFamily: font.regular,
     fontSize: 14,
@@ -422,73 +607,7 @@ const styles = StyleSheet.create({
     paddingVertical: space.xl,
     paddingHorizontal: space.lg,
   },
-
-  digestContainer: { marginTop: space.xs },
-  digestHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: space.xs,
-  },
-  digestKicker: { fontFamily: font.medium, fontSize: 11, letterSpacing: 1.8 },
-  digestTitle:  { fontFamily: font.semi, fontSize: 22, letterSpacing: -0.5, marginBottom: space.md },
-  digestBody:   { fontFamily: font.regular, fontSize: 15, lineHeight: 24 },
-  digestGenerating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: space.xl,
-    paddingHorizontal: space.sm,
-  },
-  digestGeneratingText: { fontFamily: font.regular, fontSize: 14 },
-  digestHint: {
-    fontFamily: font.regular,
-    fontSize: 14,
-    marginTop: space.xl,
-    textAlign: 'center',
-  },
-
-  sourcesContainer: { marginTop: space.xl },
-  sourcesKicker:    { fontFamily: font.medium, fontSize: 11, letterSpacing: 1.8, marginBottom: space.sm },
-  sourceRow:        { paddingVertical: space.md, borderTopWidth: StyleSheet.hairlineWidth },
-  sourceRowTop:     { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
-  pill: {
-    color: '#fff',
-    fontFamily: font.medium,
-    fontSize: 9,
-    letterSpacing: 0.8,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
-    overflow: 'hidden',
-    alignSelf: 'flex-start',
-    marginTop: 2,
-  },
-  sourceTitle:     { flex: 1, fontFamily: font.semi, fontSize: 14, lineHeight: 19 },
-  sourceRelevance: { fontFamily: font.regular, fontSize: 13, lineHeight: 18, marginTop: 4 },
-  digestExpandToggle: { marginTop: space.sm },
-  digestExpandText:   { fontFamily: font.semi, fontSize: 13 },
-
-  onboarding:         { marginTop: space.xs },
-  onboardingTitle:    { fontFamily: font.semi, fontSize: 22, letterSpacing: -0.4, marginBottom: space.sm },
-  onboardingSubtitle: { fontFamily: font.regular, fontSize: 15, lineHeight: 22, marginBottom: space.xl },
-  steps:              { gap: space.md, marginBottom: space.xl },
-  step:               { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  stepNum: {
-    width: 28, height: 28, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center',
-    marginTop: 1,
-  },
-  stepNumText:    { fontFamily: font.bold, fontSize: 13 },
-  stepText:       { flex: 1 },
-  stepLabel:      { fontFamily: font.semi, fontSize: 15 },
-  stepDetail:     { fontFamily: font.regular, fontSize: 13, marginTop: 2 },
-  onboardingBtn:  { borderRadius: 12, paddingVertical: space.md, alignItems: 'center' },
-  onboardingBtnText: { fontFamily: font.semi, fontSize: 16, color: '#fff' },
-  disclaimer: {
-    fontFamily: font.regular,
-    fontSize: 11,
-    marginTop: space.xl,
-    textAlign: 'center',
-    opacity: 0.6,
-  },
+  capMessage: { padding: space.xl, gap: space.sm },
+  capTitle:   { fontFamily: font.semi, fontSize: 18 },
+  capBody:    { fontFamily: font.regular, fontSize: 15, lineHeight: 22 },
 })
