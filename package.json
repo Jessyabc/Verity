@@ -9,7 +9,9 @@
   "scripts": {
     "dev": "vite",
     "dev:mobile": "npx expo start ./apps/mobile --go",
+    "dev:mobile:clear": "npx expo start ./apps/mobile --go --clear",
     "dev:mobile:tunnel": "npx expo start ./apps/mobile --go --tunnel",
+    "dev:mobile:tunnel:clear": "npx expo start ./apps/mobile --go --tunnel --clear",
     "dev:mobile:sim": "npx expo start ./apps/mobile --localhost --go",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
