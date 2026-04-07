@@ -34,6 +34,7 @@ const config: ExpoConfig = {
     // For local development leave this as '1'.
     buildNumber: '1',
     // Minimum iOS version for App Store submission (React Native 0.81 requires 15.1+)
+    // @ts-expect-error ExpoConfig typings may omit deploymentTarget; supported at runtime / EAS.
     deploymentTarget: '15.1',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,

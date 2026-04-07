@@ -200,7 +200,7 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, colors, atCap }
           <View style={styles.capMessage}>
             <Text style={[styles.capTitle, { color: colors.ink }]}>Watchlist full</Text>
             <Text style={[styles.capBody, { color: colors.inkMuted }]}>
-              You're tracking {WATCHLIST_CAP} companies — the maximum on the current plan.
+              {"You're tracking"} {WATCHLIST_CAP} companies — the maximum on the current plan.
               Remove a company to add another.
             </Text>
           </View>

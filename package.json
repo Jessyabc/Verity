@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "dev:mobile": "npx expo start ./apps/mobile",
+    "dev:mobile:sim": "npx expo start ./apps/mobile --localhost",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "lint:mobile": "npm run lint -w mobile",

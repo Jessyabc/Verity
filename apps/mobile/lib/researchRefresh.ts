@@ -1,15 +1,11 @@
 import { messageFromFunctionsInvokeFailure } from '@/lib/edgeFunctionError'
 import { supabase } from '@/lib/supabase'
 
-async function invokeResearchCompanyOnce(
+function invokeResearchCompanyOnce(
   slug: string,
   companyName: string,
   ticker: string | null,
-): Promise<{
-  data: { ok?: boolean; error?: string } | null
-  error: unknown
-  response: Response | undefined
-}> {
+) {
   // No manual Authorization — Supabase client's fetch injects a fresh Bearer from getSession().
   return supabase.functions.invoke<{ ok?: boolean; error?: string }>('research-company', {
     body: { slug, companyName, ticker },

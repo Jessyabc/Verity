@@ -27,6 +27,7 @@ export type WatchlistCompanyRow = {
   slug: string
   name: string
   ticker: string | null
+  exchange: string | null
 }
 
 /** Resolve display rows for watchlist slugs (skips missing companies). */
@@ -37,7 +38,7 @@ export async function fetchCompaniesForSlugs(
   if (slugs.length === 0) return []
   const { data, error } = await sb
     .from('companies')
-    .select('slug,name,ticker')
+    .select('slug,name,ticker,exchange')
     .in('slug', slugs)
   if (error) throw error
   const rows = (data ?? []) as WatchlistCompanyRow[]

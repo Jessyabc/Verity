@@ -365,7 +365,7 @@ export default function CompanyScreen() {
       <View style={[styles.center, { backgroundColor: colors.canvas, padding: space.xl }]}>
         <Text style={[styles.h1, { color: colors.ink }]}>Not found</Text>
         <Text style={[styles.muted, { color: colors.inkMuted, marginTop: space.md, textAlign: 'center' }]}>
-          This company isn't in the database yet.
+          {"This company isn't in the database yet."}
         </Text>
         <Pressable
           style={[styles.backBtn, { backgroundColor: colors.accent }]}

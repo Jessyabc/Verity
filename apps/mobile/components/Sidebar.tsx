@@ -50,12 +50,12 @@ const SidebarCtx = createContext<SidebarCtxType>({
 
 // Internal context carries animation values so they don't trigger re-renders
 // on the whole tree when state changes.
-type SidebarAnimCtx = {
+type SidebarAnimContextValue = {
   translateX: Animated.Value
   overlayOpacity: Animated.Value
 }
 
-const SidebarAnimCtx = createContext<SidebarAnimCtx>({
+const SidebarAnimCtx = createContext<SidebarAnimContextValue>({
   translateX: new Animated.Value(-SIDEBAR_WIDTH),
   overlayOpacity: new Animated.Value(0),
 })

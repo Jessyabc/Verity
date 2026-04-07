@@ -16,6 +16,7 @@ export type SearchCompanyRow = {
   slug: string
   name: string
   ticker: string | null
+  exchange: string | null
   cik: string | null
 }
 

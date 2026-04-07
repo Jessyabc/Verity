@@ -103,9 +103,10 @@ export function LiquidGlassView({
 
 // ─── LiquidGlassPressable ─────────────────────────────────────────────────
 
-type LiquidGlassPressableProps = PressableProps & {
+type LiquidGlassPressableProps = Omit<PressableProps, 'style'> & {
   children: React.ReactNode
-  style?: StyleProp<ViewStyle>
+  /** Forwarded to the outer Pressable (supports function style for pressed/hover). */
+  style?: PressableProps['style']
   innerStyle?: StyleProp<ViewStyle>
   radius?: number
 }
@@ -123,10 +124,10 @@ export function LiquidGlassPressable({
   return (
     <Pressable
       {...rest}
-      style={({ pressed }) => [
+      style={({ pressed, hovered }) => [
         dark ? styles.shadowDark : styles.shadowLight,
         { borderRadius: radius, opacity: pressed ? 0.82 : 1 },
-        typeof style === 'function' ? style({ pressed }) : style,
+        typeof style === 'function' ? style({ pressed, hovered }) : style,
       ]}
     >
       <BlurView
@@ -171,7 +172,7 @@ export function LiquidGlassFAB({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [
+      style={({ pressed, hovered }) => [
         dark ? styles.shadowDark : styles.shadowLight,
         {
           width: size,
