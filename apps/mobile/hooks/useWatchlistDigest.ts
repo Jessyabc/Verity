@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppState } from 'react-native'
 
+import { formatUnknownError } from '@/lib/format'
 import {
   fetchWatchlistDigest,
   isDigestStale,
@@ -61,7 +62,7 @@ export function useWatchlistDigest(userId: string | null, slugs: string[]) {
         startPoll(uid)
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatUnknownError(e))
     }
   }, [startPoll])
 
@@ -90,7 +91,7 @@ export function useWatchlistDigest(userId: string | null, slugs: string[]) {
         }
       })
       .catch((e) => {
-        setError(e instanceof Error ? e.message : String(e))
+        setError(formatUnknownError(e))
         setLoading(false)
       })
 

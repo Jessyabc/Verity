@@ -28,7 +28,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { fetchCompanyBundleBySlug } from '@/lib/companyBundle'
 import type { CompanyRow } from '@/lib/companyBySlug'
-import { formatAgo } from '@/lib/format'
+import { formatAgo, formatUnknownError } from '@/lib/format'
 import {
   deleteWatchlistSlug,
   fetchWatchlistSlugs,
@@ -273,7 +273,7 @@ export default function CompanyScreen() {
         try { setSavedRows(await fetchSavedHeadlines(slug)) } catch { /* non-critical */ }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatUnknownError(e))
     } finally {
       setLoading(false)
     }
@@ -307,7 +307,7 @@ export default function CompanyScreen() {
         setOnWatchlist(true)
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatUnknownError(e))
     }
   }
 
@@ -319,7 +319,7 @@ export default function CompanyScreen() {
       await invokeResearchCompany(company.slug, company.name, company.ticker)
       setResearch(await fetchResearchCacheRow(company.slug))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatUnknownError(e))
     } finally {
       setResearchBusy(false)
     }

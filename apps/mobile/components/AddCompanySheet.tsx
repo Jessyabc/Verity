@@ -20,6 +20,7 @@ import {
 } from 'react-native'
 
 import { useVerityPalette } from '@/hooks/useVerityPalette'
+import { formatUnknownError } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { font, radius, space } from '@/constants/theme'
 
@@ -91,7 +92,7 @@ export function AddCompanySheet({ visible, onClose, onSuccess }: Props) {
       reset()
       onSuccess(slug)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatUnknownError(e))
       setBusy(false)
     }
   }

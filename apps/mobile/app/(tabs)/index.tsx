@@ -30,7 +30,7 @@ import { LiquidGlassView } from '@/components/LiquidGlass'
 import { useSidebar } from '@/components/Sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
-import { formatAgo } from '@/lib/format'
+import { formatAgo, formatUnknownError } from '@/lib/format'
 import { searchCompanies, type SearchCompanyRow } from '@/lib/companySearch'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import {
@@ -309,7 +309,7 @@ export default function WatchlistScreen() {
       for (const r of rows) map.set(r.slug, r)
       setResearchMap(map)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatUnknownError(e))
     } finally {
       setLoading(false)
     }
@@ -337,7 +337,7 @@ export default function WatchlistScreen() {
       await load()
       router.push(`/company/${slug}`)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatUnknownError(e))
     }
   }
 
@@ -346,7 +346,7 @@ export default function WatchlistScreen() {
       await deleteWatchlistSlug(supabase, slug)
       setCompanies((prev) => prev.filter((c) => c.slug !== slug))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatUnknownError(e))
     }
   }
 

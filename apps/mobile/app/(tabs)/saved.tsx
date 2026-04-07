@@ -25,7 +25,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { fetchAllSavedHeadlines, unsaveHeadline, type SavedHeadlineRow } from '@/lib/savedHeadlines'
 import { openUrl } from '@/lib/openUrl'
-import { formatAgo } from '@/lib/format'
+import { formatAgo, formatUnknownError } from '@/lib/format'
 import { font, radius, space } from '@/constants/theme'
 
 type NarrativeGroup = {
@@ -168,7 +168,7 @@ export default function SavedScreen() {
       const rows = await fetchAllSavedHeadlines()
       setSections(buildSections(rows))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatUnknownError(e))
     } finally {
       setLoading(false)
     }

@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { fetchResearchCacheRow, type CompanyResearchRow, type ResearchNewsItem } from '@/lib/researchCache'
 import { classifyItem } from '@/lib/headlineGrouping'
-import { formatAgo } from '@/lib/format'
+import { formatAgo, formatUnknownError } from '@/lib/format'
 import { openUrl } from '@/lib/openUrl'
 import { font, radius, space } from '@/constants/theme'
 
@@ -98,7 +98,7 @@ export default function ReaderScreen() {
       const r = await fetchResearchCacheRow(slug)
       setResearch(r)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatUnknownError(e))
     } finally {
       setLoading(false)
     }
