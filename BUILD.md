@@ -66,9 +66,10 @@
 ```bash
 supabase functions deploy research-company
 supabase functions deploy admin-upsert-company
+supabase functions deploy watchlist-brief
 ```
 
-**Secrets** (Dashboard → Edge Functions → Secrets, or `supabase secrets set`): `PERPLEXITY_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL` (your admin email; must match `VITE_ADMIN_EMAIL` in Vercel for the Admin UI link). `SUPABASE_ANON_KEY` is required so functions can validate the caller’s JWT.
+**Secrets** (Dashboard → Edge Functions → Secrets, or `supabase secrets set`): `PERPLEXITY_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL` (your admin email; must match `VITE_ADMIN_EMAIL` in Vercel for the Admin UI link). `SUPABASE_ANON_KEY` is required so functions can validate the caller’s JWT. **`watchlist-brief`** also needs **`OPENAI_API_KEY`** (same key as document enrichment; optional override `OPENAI_WATCHLIST_MODEL`, default `gpt-4o-mini`).
 
 **`research-company`** (Perplexity refresh) requires a **signed-in** user — the browser sends the session JWT automatically.
 
@@ -104,6 +105,6 @@ See Phase 1; set `VITE_SUPABASE_*` in the host’s env for production auth.
 
 1. Apply [`supabase/migrations`](supabase/migrations/) to your Verity Supabase project (monitoring, enrichment, and `company_research_cache`).
 2. Copy `.env.example` → `.env.local`, add Supabase + `OPENAI_API_KEY`, then run `npm run monitor:once` and `npm run enrich:once`.
-3. Deploy Edge Functions `research-company` and `admin-upsert-company` (see Phase 5 above); set `PERPLEXITY_API_KEY`, `ADMIN_EMAIL`, `SUPABASE_ANON_KEY`, and service role secrets; add `VITE_ADMIN_EMAIL` (same as `ADMIN_EMAIL`) in Vercel for the Admin nav.
+3. Deploy Edge Functions `research-company`, `admin-upsert-company`, and `watchlist-brief` (see Phase 5 above); set `PERPLEXITY_API_KEY`, `OPENAI_API_KEY` (for watchlist summary), `ADMIN_EMAIL`, `SUPABASE_ANON_KEY`, and service role secrets; add `VITE_ADMIN_EMAIL` (same as `ADMIN_EMAIL`) in Vercel for the Admin nav.
 4. Add `PERPLEXITY_API_KEY` to GitHub; apply `user_watchlist` migration so app + `WATCHLIST_FROM_DB` jobs see watchlist rows; enable [`research-weekdays.yml`](.github/workflows/research-weekdays.yml).
 5. Confirm GitHub secrets for [`monitor-schedule.yml`](.github/workflows/monitor-schedule.yml), [`research-weekdays.yml`](.github/workflows/research-weekdays.yml), and on-demand [`enrich-once.yml`](.github/workflows/enrich-once.yml).

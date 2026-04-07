@@ -27,7 +27,7 @@ export function CompanyLogo({
     return (
       <div
         className={cn(
-          'flex shrink-0 items-center justify-center bg-accent-soft font-semibold tabular-nums tracking-tight text-ink ring-1 ring-black/[0.06]',
+          'flex shrink-0 items-center justify-center bg-accent-soft font-semibold tabular-nums tracking-tight text-ink ring-1 ring-stroke',
           sizeClass[size],
           className,
         )}
@@ -43,7 +43,7 @@ export function CompanyLogo({
       src={logoUrl}
       alt=""
       className={cn(
-        'shrink-0 bg-white object-contain ring-1 ring-black/[0.06]',
+        'shrink-0 bg-surface-solid object-contain ring-1 ring-stroke',
         sizeClass[size],
         className,
       )}

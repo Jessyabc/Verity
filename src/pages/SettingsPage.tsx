@@ -1,6 +1,8 @@
+import { Link } from 'react-router-dom'
 import { useId, useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Container } from '@/components/ui/Container'
+import { ThemeAppearanceControl } from '@/components/ui/ThemeAppearanceControl'
 import {
   getResearchWeekendsEnabled,
   setResearchWeekendsEnabled,
@@ -17,38 +19,57 @@ export function SettingsPage() {
   return (
     <Container className="max-w-3xl">
       <header className="mb-10 sm:mb-12">
-        <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-ink-subtle">
-          Settings
-        </p>
+        <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-ink-subtle">Settings</p>
         <h1 className="mt-2 text-3xl font-medium tracking-[-0.03em] text-ink sm:text-[2rem]">
-          Notifications & delivery
+          Preferences
         </h1>
-        <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
-          Controls are local-only until the backend lands — structure matches the
-          V1 brief: fewer, better emails.
+        <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-ink-muted">
+          Appearance syncs across this browser. Notification toggles are local until the delivery
+          service ships.
         </p>
       </header>
 
       <div className="space-y-6">
+        <Link
+          to="/app/profile"
+          className="glass-panel group flex items-center justify-between rounded-2xl px-5 py-4 transition-[transform,opacity] hover:opacity-[0.97] active:scale-[0.995] sm:px-6 sm:py-5"
+        >
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-subtle">Account</p>
+            <p className="mt-1 text-[16px] font-medium text-ink">Profile & sign out</p>
+            <p className="mt-0.5 text-[13px] text-ink-muted">Email, user id, session</p>
+          </div>
+          <span
+            className="text-ink-subtle transition-transform group-hover:translate-x-0.5"
+            aria-hidden
+          >
+            →
+          </span>
+        </Link>
+
+        <Card>
+          <h2 className="text-[15px] font-medium text-ink">Appearance</h2>
+          <p className="mt-1 text-[14px] text-ink-muted">
+            Matches the calm glass surfaces used across the app. Auto follows your system setting.
+          </p>
+          <div className="mt-6">
+            <ThemeAppearanceControl />
+          </div>
+        </Card>
+
         <Card>
           <h2 className="text-[15px] font-medium text-ink">Email</h2>
           <p className="mt-1 text-[14px] text-ink-muted">
-            Tier-1 product risk: only send what passes the “would I want this?”
-            test.
+            Tier-1 product risk: only send what passes the “would I want this?” test.
           </p>
 
           <div className="mt-8 space-y-6">
             <div className="flex items-start justify-between gap-6">
               <div>
-                <label
-                  htmlFor={emailId}
-                  className="text-[14px] font-medium text-ink"
-                >
+                <label htmlFor={emailId} className="text-[14px] font-medium text-ink">
                   Product emails
                 </label>
-                <p className="mt-1 text-[13px] text-ink-subtle">
-                  New document alerts and digests.
-                </p>
+                <p className="mt-1 text-[13px] text-ink-subtle">New document alerts and digests.</p>
               </div>
               <button
                 id={emailId}
@@ -57,25 +78,22 @@ export function SettingsPage() {
                 aria-checked={emailOn}
                 onClick={() => setEmailOn((v) => !v)}
                 className={`relative h-8 w-14 shrink-0 rounded-full transition-colors duration-200 ${
-                  emailOn ? 'bg-accent' : 'bg-black/10'
+                  emailOn ? 'bg-accent' : 'bg-black/10 dark:bg-white/10'
                 }`}
               >
                 <span
-                  className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                  className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-surface-solid shadow-sm transition-transform duration-200 ${
                     emailOn ? 'translate-x-6' : ''
                   }`}
                 />
               </button>
             </div>
 
-            <div className="h-px bg-black/[0.06]" />
+            <div className="h-px bg-stroke" />
 
             <div className="flex items-start justify-between gap-6">
               <div>
-                <label
-                  htmlFor={digestId}
-                  className="text-[14px] font-medium text-ink"
-                >
+                <label htmlFor={digestId} className="text-[14px] font-medium text-ink">
                   Daily digest
                 </label>
                 <p className="mt-1 text-[13px] text-ink-subtle">
@@ -89,11 +107,11 @@ export function SettingsPage() {
                 aria-checked={digest}
                 onClick={() => setDigest((v) => !v)}
                 className={`relative h-8 w-14 shrink-0 rounded-full transition-colors duration-200 ${
-                  digest ? 'bg-accent' : 'bg-black/10'
+                  digest ? 'bg-accent' : 'bg-black/10 dark:bg-white/10'
                 }`}
               >
                 <span
-                  className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                  className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-surface-solid shadow-sm transition-transform duration-200 ${
                     digest ? 'translate-x-6' : ''
                   }`}
                 />
@@ -134,11 +152,11 @@ export function SettingsPage() {
                 setResearchWeekendsEnabled(next)
               }}
               className={`relative h-8 w-14 shrink-0 rounded-full transition-colors duration-200 ${
-                weekends ? 'bg-accent' : 'bg-black/10'
+                weekends ? 'bg-accent' : 'bg-black/10 dark:bg-white/10'
               }`}
             >
               <span
-                className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-surface-solid shadow-sm transition-transform duration-200 ${
                   weekends ? 'translate-x-6' : ''
                 }`}
               />
@@ -151,10 +169,10 @@ export function SettingsPage() {
           </p>
         </Card>
 
-        <Card className="bg-white/50">
+        <Card className="border-dashed border-stroke bg-surface/40 shadow-none dark:bg-surface/25">
           <p className="text-[13px] leading-relaxed text-ink-subtle">
-            Timezone and mute windows ship with the notification service (Phase 5).
-            Unsubscribe links will be mandatory before any real email provider.
+            Timezone and mute windows ship with the notification service (Phase 5). Unsubscribe links
+            will be mandatory before any real email provider.
           </p>
         </Card>
       </div>

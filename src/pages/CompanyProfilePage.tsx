@@ -21,7 +21,7 @@ import {
 function sourceBadgeClasses(status: MonitoredSource['status']) {
   if (status === 'active') return 'bg-emerald-500/10 text-emerald-900'
   if (status === 'blocked') return 'bg-amber-500/12 text-amber-950'
-  return 'bg-rose-500/10 text-rose-950'
+  return 'border border-danger-hairline bg-danger-soft text-danger'
 }
 
 function sourceBadgeLabel(status: MonitoredSource['status']) {
@@ -73,7 +73,11 @@ export function CompanyProfilePage() {
           </h1>
           <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
             This slug isn’t in the pilot bundle or your Supabase inventory yet. Ask an admin to add
-            it, or extend <code className="rounded-md bg-black/[0.04] px-1.5 py-0.5 font-mono text-[13px] text-ink">pilot-universe.ts</code>.
+            it, or extend{' '}
+            <code className="rounded-md bg-[var(--nav-pill-hover-bg)] px-1.5 py-0.5 font-mono text-[13px] text-ink">
+              pilot-universe.ts
+            </code>
+            .
           </p>
         </header>
         <Card>
@@ -131,7 +135,7 @@ export function CompanyProfilePage() {
                 {view.name}
               </h1>
               {view.ticker ? (
-                <span className="rounded-lg border border-black/[0.08] bg-white/90 px-2.5 py-1 font-mono text-[13px] font-medium tabular-nums text-ink">
+                <span className="rounded-lg border border-stroke bg-[var(--segment-active-bg)] px-2.5 py-1 font-mono text-[13px] font-medium tabular-nums text-ink">
                   {view.ticker}
                   {view.exchange ? (
                     <span className="ml-1.5 text-ink-subtle">· {view.exchange}</span>
@@ -163,7 +167,7 @@ export function CompanyProfilePage() {
 
       {isSupabaseConfigured() && dbError ? (
         <p
-          className="mb-6 rounded-2xl border border-rose-200/80 bg-rose-50/80 px-4 py-3 text-[14px] text-rose-950"
+          className="mb-6 rounded-2xl border border-danger-hairline bg-danger-soft px-4 py-3 text-[14px] text-danger"
           role="alert"
         >
           Live monitoring data couldn’t load: {dbError}. Showing profile fields only.
@@ -176,7 +180,7 @@ export function CompanyProfilePage() {
           <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
             {view.overview}
           </p>
-          <p className="mt-5 rounded-xl bg-black/[0.03] px-4 py-3 text-[13px] leading-relaxed text-ink-subtle">
+          <p className="mt-5 rounded-xl bg-[var(--nav-pill-hover-bg)] px-4 py-3 text-[13px] leading-relaxed text-ink-subtle">
             AI-generated profiles will be labeled when wired to the model stack.
             Informational only — not investment advice.
           </p>

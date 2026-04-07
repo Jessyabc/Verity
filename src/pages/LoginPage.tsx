@@ -40,7 +40,7 @@ export function LoginPage() {
 
   return (
     <div className="mesh-bg min-h-svh">
-      <header className="border-b border-black/[0.06] bg-white/45 backdrop-blur-xl">
+      <header className="glass-header-marketing">
         <Container className="flex h-[4.25rem] items-center justify-between">
           <Logo />
           <Link
@@ -95,7 +95,7 @@ export function LoginPage() {
                   disabled={submitting}
                 />
                 {error ? (
-                  <p className="text-[13px] text-rose-800" role="alert">
+                  <p className="text-[13px] text-danger" role="alert">
                     {error}
                   </p>
                 ) : null}

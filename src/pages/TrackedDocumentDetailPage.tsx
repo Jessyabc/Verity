@@ -99,7 +99,7 @@ export function TrackedDocumentDetailPage({ id }: { id: string }) {
   if (error) {
     return (
       <Container className="max-w-3xl">
-        <p className="text-[13px] text-rose-800" role="alert">
+        <p className="text-[13px] text-danger" role="alert">
           {error}
         </p>
       </Container>
@@ -171,9 +171,9 @@ export function TrackedDocumentDetailPage({ id }: { id: string }) {
 
       <div className="mt-8 space-y-6">
         {doc.enrichment_status === 'error' && doc.enrichment_detail ? (
-          <Card className="border-rose-200/80 bg-rose-50/60">
-            <h2 className="text-[15px] font-medium text-rose-950">Enrichment error</h2>
-            <p className="mt-2 text-[14px] leading-relaxed text-rose-900">{doc.enrichment_detail}</p>
+          <Card className="border-danger-hairline bg-danger-soft">
+            <h2 className="text-[15px] font-medium text-danger">Enrichment error</h2>
+            <p className="mt-2 text-[14px] leading-relaxed text-danger">{doc.enrichment_detail}</p>
           </Card>
         ) : null}
 

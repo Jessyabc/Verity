@@ -7,6 +7,7 @@
  *  - Clearly marks uncertainty vs. verified evidence.
  */
 
+import { FunctionsHttpError } from '@supabase/supabase-js'
 import { useLocalSearchParams, useNavigation } from 'expo-router'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
@@ -44,6 +45,23 @@ type Message = {
 
 function safeHostname(url: string): string {
   try { return new URL(url).hostname } catch { return url }
+}
+
+async function formatInvokeError(error: unknown): Promise<string> {
+  if (error instanceof FunctionsHttpError) {
+    const res = error.context
+    if (res && typeof res === 'object' && 'json' in res && typeof res.json === 'function') {
+      try {
+        const body = (await (res as Response).clone().json()) as { error?: string; message?: string }
+        if (typeof body?.error === 'string') return body.error
+        if (typeof body?.message === 'string') return body.message
+      } catch {
+        /* fall through */
+      }
+    }
+  }
+  if (error instanceof Error) return error.message
+  return 'Unknown error'
 }
 
 function UserBubble({ msg, colors }: { msg: Message; colors: ReturnType<typeof useVerityPalette> }) {
@@ -178,7 +196,7 @@ export default function ChatScreen() {
         body: { slug, messages: apiMessages },
       })
 
-      if (error) throw new Error(error.message ?? 'Afaqi error')
+      if (error) throw new Error(await formatInvokeError(error))
 
       const assistantMsg: Message = {
         id: `assistant-${Date.now()}`,
@@ -189,10 +207,11 @@ export default function ChatScreen() {
       setMessages((prev) => [...prev, assistantMsg])
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100)
     } catch (e) {
+      const detail = e instanceof Error ? e.message : 'Unknown error'
       const errMsg: Message = {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: `Something went wrong: ${e instanceof Error ? e.message : 'Unknown error'}. Please try again.`,
+        content: `Something went wrong: ${detail}. Please try again.`,
         sources: [],
       }
       setMessages((prev) => [...prev, errMsg])
