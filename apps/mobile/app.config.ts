@@ -56,7 +56,16 @@ const config: ExpoConfig = {
     output: 'static',
     favicon: './assets/images/favicon.png',
   },
-  plugins: ['expo-router'],
+  plugins: [
+    [
+      'expo-router',
+      {
+        // Required for Expo Head / RSC URL helpers; without it, dev can show missing-origin warnings.
+        // Replace with your real web URL when you ship web (or set EXPO_PUBLIC_EXPO_ROUTER_ORIGIN in env).
+        origin: process.env.EXPO_PUBLIC_EXPO_ROUTER_ORIGIN ?? 'https://expo.dev',
+      },
+    ],
+  ],
   experiments: {
     typedRoutes: true,
   },

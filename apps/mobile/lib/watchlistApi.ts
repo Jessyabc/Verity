@@ -1,6 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { syncSessionForApi } from '@/lib/syncSessionForApi'
+
 export async function fetchWatchlistSlugs(sb: SupabaseClient): Promise<string[]> {
+  await syncSessionForApi()
   const { data, error } = await sb.from('user_watchlist').select('company_slug')
   if (error) throw error
   return (data ?? []).map((r) => r.company_slug as string)
@@ -11,6 +14,7 @@ export async function insertWatchlistSlug(
   userId: string,
   slug: string,
 ): Promise<void> {
+  await syncSessionForApi()
   const { error } = await sb.from('user_watchlist').insert({
     user_id: userId,
     company_slug: slug,
@@ -19,6 +23,7 @@ export async function insertWatchlistSlug(
 }
 
 export async function deleteWatchlistSlug(sb: SupabaseClient, slug: string): Promise<void> {
+  await syncSessionForApi()
   const { error } = await sb.from('user_watchlist').delete().eq('company_slug', slug)
   if (error) throw error
 }
@@ -36,6 +41,7 @@ export async function fetchCompaniesForSlugs(
   slugs: string[],
 ): Promise<WatchlistCompanyRow[]> {
   if (slugs.length === 0) return []
+  await syncSessionForApi()
   const { data, error } = await sb
     .from('companies')
     .select('slug,name,ticker,exchange')
