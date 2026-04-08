@@ -118,6 +118,14 @@ function AuthAwareStack() {
             ...stackScreenGesture,
           }}
         />
+        <Stack.Screen
+          name="chat/[slug]/[conversationId]"
+          options={{
+            headerShown: true,
+            headerBackTitle: 'Conversations',
+            ...stackScreenGesture,
+          }}
+        />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
     </SidebarProvider>
