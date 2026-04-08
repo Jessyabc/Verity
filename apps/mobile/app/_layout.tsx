@@ -1,3 +1,5 @@
+import 'react-native-gesture-handler'
+
 import {
   DMSans_400Regular,
   DMSans_500Medium,
@@ -11,7 +13,9 @@ import { Stack } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect } from 'react'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
 
+import { SidebarProvider } from '@/components/Sidebar'
 import { useColorScheme } from '@/components/useColorScheme'
 import { verityNavigationTheme } from '@/constants/navigationTheme'
 import { AuthProvider } from '@/contexts/AuthContext'
@@ -47,11 +51,13 @@ export default function RootLayout() {
   if (!loaded) return null
 
   return (
-    <ThemePreferenceProvider>
-      <AuthProvider>
-        <RootNavigationShell />
-      </AuthProvider>
-    </ThemePreferenceProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemePreferenceProvider>
+        <AuthProvider>
+          <RootNavigationShell />
+        </AuthProvider>
+      </ThemePreferenceProvider>
+    </GestureHandlerRootView>
   )
 }
 
@@ -69,44 +75,51 @@ function RootNavigationShell() {
 
 function AuthAwareStack() {
   useProtectedSession()
+  const stackScreenGesture = {
+    gestureEnabled: true,
+    fullScreenGestureEnabled: true,
+    animation: 'slide_from_right' as const,
+  }
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-      <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          headerBackTitle: 'Back',
-          animation: 'slide_from_right',
-        }}
-      />
-      <Stack.Screen
-        name="company/[slug]"
-        options={{
-          headerShown: true,
-          headerBackTitle: 'Back',
-          animation: 'slide_from_right',
-        }}
-      />
-      <Stack.Screen
-        name="reader/[slug]"
-        options={{
-          headerShown: true,
-          headerBackTitle: 'Back',
-          animation: 'slide_from_right',
-        }}
-      />
-      <Stack.Screen
-        name="chat/[slug]"
-        options={{
-          headerShown: true,
-          headerBackTitle: 'Back',
-          animation: 'slide_from_right',
-        }}
-      />
-      <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-    </Stack>
+    <SidebarProvider>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            headerBackTitle: 'Back',
+            ...stackScreenGesture,
+          }}
+        />
+        <Stack.Screen
+          name="company/[slug]"
+          options={{
+            headerShown: true,
+            headerBackTitle: 'Back',
+            ...stackScreenGesture,
+          }}
+        />
+        <Stack.Screen
+          name="reader/[slug]"
+          options={{
+            headerShown: true,
+            headerBackTitle: 'Back',
+            ...stackScreenGesture,
+          }}
+        />
+        <Stack.Screen
+          name="chat/[slug]"
+          options={{
+            headerShown: true,
+            headerBackTitle: 'Back',
+            ...stackScreenGesture,
+          }}
+        />
+        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+      </Stack>
+    </SidebarProvider>
   )
 }

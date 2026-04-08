@@ -127,7 +127,7 @@ export function CompanyProfilePage() {
               ticker={view.ticker}
               logoUrl={headerLogoUrl}
               size="lg"
-              className="shadow-[0_8px_28px_rgba(12,13,17,0.06)]"
+              className="shadow-card-raised"
             />
             <div className="min-w-0 pt-0.5">
               {view.isDbOnly ? (
@@ -181,7 +181,7 @@ export function CompanyProfilePage() {
       <CompanyResearchSection slug={view.slug} companyName={view.name} ticker={view.ticker} />
 
       <div className="mt-12 grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-        <Card className="border-black/[0.06] bg-white/55 shadow-none dark:bg-white/[0.04]">
+        <Card className="border-divider bg-surface shadow-none dark:bg-white/[0.04]">
           <h2 className="text-[15px] font-medium text-ink">Overview</h2>
           <p className="mt-3 text-[15px] leading-relaxed text-ink-muted">
             {view.overview}
@@ -192,7 +192,7 @@ export function CompanyProfilePage() {
           </p>
         </Card>
 
-        <Card className="border-black/[0.06] bg-white/55 shadow-none dark:bg-white/[0.04]">
+        <Card className="border-divider bg-surface shadow-none dark:bg-white/[0.04]">
           <h2 className="text-[15px] font-medium text-ink">Monitoring</h2>
           <p className="mt-1 text-[13px] text-ink-subtle">
             Last checked (company):{' '}
@@ -209,7 +209,7 @@ export function CompanyProfilePage() {
               return (
                 <li
                   key={s.id}
-                  className="border-b border-black/[0.05] pb-4 last:border-0 last:pb-0"
+                  className="border-b border-divider pb-4 last:border-0 last:pb-0"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
@@ -243,7 +243,7 @@ export function CompanyProfilePage() {
               return (
                 <li
                   key={db.id}
-                  className="border-b border-black/[0.05] pb-4 last:border-0 last:pb-0"
+                  className="border-b border-divider pb-4 last:border-0 last:pb-0"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
@@ -312,7 +312,7 @@ export function CompanyProfilePage() {
                   <Link to={`/app/updates/${d.id}`}>
                     <Card
                       padding="sm"
-                      className="transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:shadow-[0_12px_40px_rgba(12,13,17,0.08)]"
+                      interactive
                     >
                       <p className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
                         Tracked URL · {formatAgo(d.last_checked_at)}
@@ -354,7 +354,7 @@ export function CompanyProfilePage() {
               : 'Bundled sample narratives — distinct from live hash rows above.'}
           </p>
           {view.pilotUpdates.length === 0 ? (
-            <Card className="mt-4 border-dashed border-black/[0.1] bg-white/45 shadow-none">
+            <Card className="mt-4 border-dashed border-stroke bg-surface shadow-none dark:bg-white/[0.04]">
               <p className="text-[14px] leading-relaxed text-ink-muted">
                 {view.isDbOnly
                   ? 'No bundled demos for inventory-only companies.'
@@ -368,7 +368,7 @@ export function CompanyProfilePage() {
                   <Link to={`/app/updates/${u.id}`}>
                     <Card
                       padding="sm"
-                      className="transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:shadow-[0_12px_40px_rgba(12,13,17,0.08)]"
+                      interactive
                     >
                       <p className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
                         {u.sourceCategoryLabel} · {u.detectedLabel}

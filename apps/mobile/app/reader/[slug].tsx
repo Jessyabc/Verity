@@ -6,18 +6,14 @@
  * and a prominent "Ask Afaqi" CTA at the bottom.
  */
 
+import FontAwesome from '@expo/vector-icons/FontAwesome'
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native'
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ScrollView } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { VerityMark } from '@/components/VerityMark'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { fetchResearchCacheRow, type CompanyResearchRow, type ResearchNewsItem } from '@/lib/researchCache'
 import { classifyItem } from '@/lib/headlineGrouping'
@@ -111,9 +107,21 @@ export default function ReaderScreen() {
     navigation.setOptions({
       title: company,
       headerBackTitle: 'Back',
+      headerBackVisible: false,
       headerTintColor: colors.accent,
       headerStyle: { backgroundColor: colors.surfaceSolid },
       headerTitleStyle: { fontFamily: font.semi, color: colors.ink, fontSize: 17 },
+      headerLeft: () => (
+        <Pressable
+          onPress={() => navigation.goBack()}
+          hitSlop={14}
+          accessibilityRole="button"
+          accessibilityLabel="Back to previous screen"
+          style={{ marginLeft: Platform.OS === 'ios' ? 8 : 12, paddingVertical: 6 }}
+        >
+          <FontAwesome name="list-ul" size={21} color={colors.accent} />
+        </Pressable>
+      ),
     })
   }, [navigation, research?.company_name, slug, colors])
 
@@ -178,7 +186,9 @@ export default function ReaderScreen() {
       {official.length > 0 ? (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <View style={[styles.sectionDot, { backgroundColor: TIER_COLORS.official }]} />
+            <View style={styles.sectionMark}>
+              <VerityMark size={22} />
+            </View>
             <Text style={[styles.sectionLabel, { color: colors.inkSubtle }]}>
               WHAT THE COMPANY SAYS
             </Text>
@@ -248,6 +258,7 @@ const styles = StyleSheet.create({
     marginBottom: space.md,
   },
   sectionDot:   { width: 8, height: 8, borderRadius: 4 },
+  sectionMark:  { marginRight: -2 },
   sectionLabel: { fontFamily: font.medium, fontSize: 11, letterSpacing: 1.8 },
 
   sourceItem: {

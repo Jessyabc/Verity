@@ -4,7 +4,7 @@ import { Image, StyleSheet, Text, View } from 'react-native'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { font, radius } from '@/constants/theme'
 
-const SIZES = { md: 52, lg: 72 } as const
+const SIZES = { sm: 40, md: 52, lg: 72 } as const
 
 type Size = keyof typeof SIZES
 
@@ -23,7 +23,7 @@ export function CompanyLogo({
   const [failed, setFailed] = useState(false)
   const dim = SIZES[size]
   const initials = (ticker?.slice(0, 2) ?? name.slice(0, 2)).toUpperCase()
-  const initialSize = size === 'lg' ? 22 : 17
+  const initialSize = size === 'lg' ? 22 : size === 'sm' ? 14 : 17
 
   if (!logoUrl?.trim() || failed) {
     return (

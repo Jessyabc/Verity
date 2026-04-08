@@ -32,6 +32,9 @@ export const paletteDark = {
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const
 export const radius = { sm: 8, md: 12, lg: 16 } as const
 
+/** Text/icons on top of `palette.accent` buttons and badges. */
+export const onAccent = '#ffffff' as const
+
 /** Font names from `@expo-google-fonts/dm-sans` after `useFonts` loads. */
 export const font = {
   regular: 'DMSans_400Regular',

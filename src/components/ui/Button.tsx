@@ -17,9 +17,9 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variants: Record<Variant, string> = {
   primary:
-    'bg-accent text-white shadow-[0_1px_0_rgba(255,255,255,0.14)_inset] hover:brightness-[0.95] active:scale-[0.99] dark:hover:brightness-110',
+    'bg-accent text-white shadow-inset-highlight hover:brightness-[0.95] active:scale-[0.99] dark:hover:brightness-110',
   secondary:
-    'border border-stroke bg-[var(--segment-active-bg)] text-ink shadow-[0_1px_2px_rgba(12,13,17,0.05)] hover:brightness-[1.02] dark:shadow-[0_1px_2px_rgba(0,0,0,0.25)] dark:hover:brightness-125',
+    'border border-stroke bg-[var(--segment-active-bg)] text-ink shadow-control hover:brightness-[1.02] dark:hover:brightness-125',
   ghost:
     'text-ink-muted hover:bg-[var(--nav-pill-hover-bg)] hover:text-ink dark:hover:bg-white/[0.06]',
 }

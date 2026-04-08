@@ -28,7 +28,7 @@ export function ProfilePage() {
             className="absolute inset-0 rounded-full opacity-90 blur-xl dark:opacity-50"
             style={{
               background:
-                'linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 40%, #a855f7))',
+                'linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 40%, var(--color-accent-spot)))',
             }}
             aria-hidden
           />
@@ -36,7 +36,7 @@ export function ProfilePage() {
             className={cn(
               'relative flex h-full w-full items-center justify-center rounded-full',
               'border border-stroke bg-canvas text-[1.35rem] font-semibold tracking-tight text-ink',
-              'shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset]',
+              'shadow-inset-avatar',
             )}
           >
             {initials}

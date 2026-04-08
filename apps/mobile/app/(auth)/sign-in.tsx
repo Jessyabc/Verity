@@ -1,26 +1,33 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
-  Text as RNText,
+  Text,
   TextInput,
+  View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native'
+import { ScrollView } from 'react-native-gesture-handler'
+import { BlurView } from 'expo-blur'
+import { StatusBar } from 'expo-status-bar'
 
-import { Text, View } from '@/components/Themed'
+import { VerityWordmark } from '@/components/VerityWordmark'
 import { useAuth } from '@/contexts/AuthContext'
-import { palette } from '@/constants/theme'
+import { BRAND } from '@/constants/brand'
+import { font, radius, space } from '@/constants/theme'
+import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { openUrl } from '@/lib/openUrl'
 
-// Update these URLs once your policy pages are live.
 const PRIVACY_URL = 'https://verity.so/privacy'
-const TERMS_URL   = 'https://verity.so/terms'
+const TERMS_URL = 'https://verity.so/terms'
 
 export default function SignInScreen() {
+  const palette = useVerityPalette()
   const { signInWithPassword, signUpWithPassword, signInWithMagicLink } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -78,9 +85,10 @@ export default function SignInScreen() {
 
   if (!isSupabaseConfigured()) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.title}>Configure Supabase</Text>
-        <Text style={styles.hint}>
+      <View style={[styles.center, { backgroundColor: BRAND.navy }]}>
+        <StatusBar style="light" />
+        <Text style={[styles.title, { color: BRAND.onNavy }]}>Configure Supabase</Text>
+        <Text style={[styles.hint, { color: BRAND.onNavyMuted }]}>
           Copy apps/mobile/.env.example to apps/mobile/.env and set EXPO_PUBLIC_SUPABASE_URL and
           EXPO_PUBLIC_SUPABASE_ANON_KEY, then restart Expo.
         </Text>
@@ -89,177 +97,249 @@ export default function SignInScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.flex}
-    >
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+    <View style={[styles.flex, { backgroundColor: BRAND.navy }]}>
+      <StatusBar style="light" />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.flex}
       >
-        <Text style={styles.title}>Sign in</Text>
-        <Text style={styles.hint}>
-          Sign in to monitor filings, press releases, and investor relations documents from your
-          watchlist companies.
-        </Text>
-
-        <TextInput
-          style={styles.input}
-          placeholder="you@company.com"
-          placeholderTextColor="#888"
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          value={email}
-          onChangeText={setEmail}
-          editable={!busy}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor="#888"
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          value={password}
-          onChangeText={setPassword}
-          editable={!busy}
-        />
-
-        <Pressable
-          style={[styles.button, busy && styles.buttonDisabled]}
-          onPress={() => void onSignIn()}
-          disabled={busy}
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
         >
-          {busy ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <RNText style={styles.buttonText}>Sign in with password</RNText>
-          )}
-        </Pressable>
-
-        <Pressable
-          style={[styles.secondaryBtn, busy && styles.buttonDisabled]}
-          onPress={() => void onSignUp()}
-          disabled={busy}
-        >
-          <RNText style={styles.secondaryBtnText}>Create account</RNText>
-        </Pressable>
-
-        {message ? <RNText style={styles.success}>{message}</RNText> : null}
-        {error ? <RNText style={styles.err}>{error}</RNText> : null}
-
-        <Pressable
-          style={styles.linkRow}
-          onPress={() => setShowMagicLink((v) => !v)}
-          disabled={busy}
-        >
-          <RNText style={styles.linkText}>
-            {showMagicLink ? '▼ Hide magic link option' : '▶ Sign in with magic link instead'}
-          </RNText>
-        </Pressable>
-
-        {showMagicLink ? (
-          <View style={styles.magicBox}>
-            <Text style={styles.magicHint}>
-              {"We'll send a sign-in link to your email. Tap it on this device to open the app and sign in instantly — no password needed."}
+          <View style={styles.brandBlock}>
+            <VerityWordmark height={36} />
+            <Text style={[styles.tagline, { color: BRAND.tealLight }]}>
+              Company · Media · The Gap
             </Text>
-            <Pressable
-              style={[styles.outlineBtn, busy && styles.buttonDisabled]}
-              onPress={() => void onMagicLink()}
-              disabled={busy}
-            >
-              <RNText style={styles.outlineBtnText}>Send magic link</RNText>
+          </View>
+
+          <Text style={[styles.lead, { color: BRAND.onNavyMuted }]}>
+            Sign in to monitor filings, press releases, and investor relations from your watchlist
+            companies.
+          </Text>
+
+          <BlurPill>
+            <TextInput
+              style={[styles.input, { color: BRAND.onNavy }]}
+              placeholder="you@company.com"
+              placeholderTextColor={BRAND.onNavySubtle}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+              editable={!busy}
+            />
+          </BlurPill>
+          <BlurPill>
+            <TextInput
+              style={[styles.input, { color: BRAND.onNavy }]}
+              placeholder="Password"
+              placeholderTextColor={BRAND.onNavySubtle}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              value={password}
+              onChangeText={setPassword}
+              editable={!busy}
+            />
+          </BlurPill>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              { backgroundColor: BRAND.tealDark, opacity: pressed || busy ? 0.85 : 1 },
+            ]}
+            onPress={() => void onSignIn()}
+            disabled={busy}
+          >
+            {busy ? (
+              <ActivityIndicator color={BRAND.navy} />
+            ) : (
+              <Text style={[styles.primaryBtnLabel, { color: BRAND.navy }]}>
+                Sign in with password
+              </Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.secondaryPress, { opacity: pressed ? 0.75 : 1 }]}
+            onPress={() => void onSignUp()}
+            disabled={busy}
+          >
+            <Text style={[styles.secondaryLabel, { color: BRAND.tealLight }]}>Create account</Text>
+          </Pressable>
+
+          {message ? (
+            <Text style={[styles.success, { color: BRAND.tealLight }]}>{message}</Text>
+          ) : null}
+          {error ? <Text style={[styles.err, { color: palette.danger }]}>{error}</Text> : null}
+
+          <Pressable
+            style={styles.linkRow}
+            onPress={() => setShowMagicLink((v) => !v)}
+            disabled={busy}
+          >
+            <Text style={[styles.linkText, { color: BRAND.onNavySubtle }]}>
+              {showMagicLink ? '▼ Hide magic link option' : '▶ Sign in with magic link instead'}
+            </Text>
+          </Pressable>
+
+          {showMagicLink ? (
+            <BlurPill style={styles.magicBox}>
+              <Text style={[styles.magicHint, { color: BRAND.onNavyMuted }]}>
+                {"We'll send a sign-in link to your email. Tap it on this device to open the app and sign in instantly — no password needed."}
+              </Text>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.outlineBtn,
+                  { borderColor: BRAND.tealLight, opacity: pressed || busy ? 0.85 : 1 },
+                ]}
+                onPress={() => void onMagicLink()}
+                disabled={busy}
+              >
+                <Text style={[styles.outlineBtnText, { color: BRAND.tealLight }]}>
+                  Send magic link
+                </Text>
+              </Pressable>
+            </BlurPill>
+          ) : null}
+
+          <Text style={[styles.small, { color: BRAND.onNavySubtle }]}>
+            Verity monitors official company sources only. Content is for informational purposes and
+            is not investment advice.
+          </Text>
+
+          <View style={styles.legalRow}>
+            <Pressable onPress={() => void openUrl(PRIVACY_URL)}>
+              <Text style={[styles.legalLink, { color: BRAND.tealLight }]}>Privacy Policy</Text>
+            </Pressable>
+            <Text style={[styles.legalSep, { color: BRAND.onNavySubtle }]}>·</Text>
+            <Pressable onPress={() => void openUrl(TERMS_URL)}>
+              <Text style={[styles.legalLink, { color: BRAND.tealLight }]}>Terms of Use</Text>
             </Pressable>
           </View>
-        ) : null}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
+  )
+}
 
-        <Text style={styles.small}>
-          Verity monitors official company sources only. Content is for informational purposes and
-          is not investment advice.
-        </Text>
-
-        <View style={styles.legalRow}>
-          <Pressable onPress={() => void openUrl(PRIVACY_URL)}>
-            <RNText style={styles.legalLink}>Privacy Policy</RNText>
-          </Pressable>
-          <RNText style={styles.legalSep}>·</RNText>
-          <Pressable onPress={() => void openUrl(TERMS_URL)}>
-            <RNText style={styles.legalLink}>Terms of Use</RNText>
-          </Pressable>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+function BlurPill({
+  children,
+  style,
+}: {
+  children: ReactNode
+  style?: StyleProp<ViewStyle>
+}) {
+  return (
+    <BlurView intensity={40} tint="dark" style={[styles.fieldShell, style]}>
+      <View style={[styles.fieldInner, { backgroundColor: BRAND.glassNavy }]}>{children}</View>
+    </BlurView>
   )
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   scrollContent: {
-    padding: 24,
-    paddingTop: 16,
-    paddingBottom: 40,
-    maxWidth: 400,
+    padding: space.xl,
+    paddingTop: space.xxl,
+    paddingBottom: space.xxl * 2,
+    maxWidth: 420,
     width: '100%',
     alignSelf: 'center',
   },
   center: {
     flex: 1,
-    padding: 24,
+    padding: space.xl,
     justifyContent: 'center',
-    maxWidth: 400,
+    maxWidth: 420,
     alignSelf: 'center',
     width: '100%',
   },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 8 },
-  hint: { fontSize: 15, opacity: 0.8, marginBottom: 16 },
+  brandBlock: {
+    marginBottom: space.lg,
+    gap: space.sm,
+  },
+  tagline: {
+    fontFamily: font.medium,
+    fontSize: 13,
+    letterSpacing: 0.4,
+  },
+  title: { fontFamily: font.bold, fontSize: 22, marginBottom: space.sm },
+  lead: {
+    fontFamily: font.regular,
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: space.xl,
+  },
+  fieldShell: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    marginBottom: space.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: BRAND.stroke,
+  },
+  fieldInner: {
+    borderRadius: radius.md - 1,
+    overflow: 'hidden',
+  },
   input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    marginBottom: 12,
-  },
-  button: {
-    backgroundColor: palette.accent,
+    fontFamily: font.regular,
+    paddingHorizontal: space.lg,
     paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 4,
+    fontSize: 16,
   },
-  secondaryBtn: {
-    marginTop: 12,
+  primaryBtn: {
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: space.sm,
+  },
+  primaryBtnLabel: {
+    fontFamily: font.semi,
+    fontSize: 16,
+  },
+  secondaryPress: {
+    marginTop: space.lg,
     paddingVertical: 12,
     alignItems: 'center',
   },
-  secondaryBtnText: { fontSize: 15, fontWeight: '600', color: palette.accent },
-  buttonDisabled: { opacity: 0.7 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  success: { marginTop: 16, color: '#15803d', fontSize: 14 },
-  err: { marginTop: 16, color: '#b91c1c', fontSize: 14 },
-  linkRow: { marginTop: 24, paddingVertical: 8 },
-  linkText: { fontSize: 14, fontWeight: '600', color: '#475569' },
-  magicBox: {
-    marginTop: 8,
-    padding: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+  secondaryLabel: {
+    fontFamily: font.semi,
+    fontSize: 15,
   },
-  magicHint: { fontSize: 13, opacity: 0.85, marginBottom: 12 },
+  success: { marginTop: space.lg, fontFamily: font.regular, fontSize: 14 },
+  err: { marginTop: space.lg, fontFamily: font.regular, fontSize: 14 },
+  hint: {
+    fontFamily: font.regular,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  linkRow: { marginTop: space.xl, paddingVertical: space.sm },
+  linkText: { fontFamily: font.semi, fontSize: 14 },
+  magicBox: {
+    marginTop: space.sm,
+    padding: space.lg,
+  },
+  magicHint: { fontFamily: font.regular, fontSize: 13, lineHeight: 19, marginBottom: space.md },
   outlineBtn: {
     borderWidth: 1,
-    borderColor: '#64748b',
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: radius.md,
     alignItems: 'center',
   },
-  outlineBtnText: { fontSize: 15, fontWeight: '600' },
-  small: { marginTop: 20, fontSize: 12, opacity: 0.65 },
-  legalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 12, gap: 6 },
-  legalLink: { fontSize: 12, color: palette.accent, textDecorationLine: 'underline' },
-  legalSep:  { fontSize: 12, opacity: 0.4 },
+  outlineBtnText: { fontFamily: font.semi, fontSize: 15 },
+  small: { marginTop: space.xl, fontFamily: font.regular, fontSize: 12, lineHeight: 17 },
+  legalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: space.md,
+    gap: 6,
+  },
+  legalLink: { fontFamily: font.medium, fontSize: 12, textDecorationLine: 'underline' },
+  legalSep: { fontSize: 12 },
 })

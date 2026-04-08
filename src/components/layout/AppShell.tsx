@@ -82,7 +82,7 @@ export function AppShell() {
                 <span
                   className={cn(
                     'flex h-9 w-9 items-center justify-center rounded-full text-[12px] font-semibold tracking-tight text-ink',
-                    'border border-stroke bg-accent-soft shadow-[0_0_0_1px_rgba(255,255,255,0.06)_inset]',
+                    'border border-stroke bg-accent-soft shadow-inset-well',
                   )}
                 >
                   {initials}

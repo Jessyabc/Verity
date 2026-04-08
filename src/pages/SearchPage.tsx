@@ -88,13 +88,13 @@ export function SearchPage() {
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,280px)]">
         <Card className="overflow-hidden p-0 sm:p-0">
-          <div className="border-b border-black/[0.06] p-6 sm:p-8 sm:pb-6">
+          <div className="border-b border-divider p-6 sm:p-8 sm:pb-6">
             <Field
               label="Company or ticker"
               placeholder="Try Microsoft, MSFT, Apple…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              className="border-black/[0.06] bg-white/80"
+              className="border-divider bg-surface-solid/80"
               hint="Pilot list filters locally; inventory uses server search (apply latest SQL migration + npm run import:sec-tickers for US SEC names)."
             />
             {isSupabaseConfigured() && dbLoading ? (
@@ -106,7 +106,7 @@ export function SearchPage() {
               </p>
             ) : null}
           </div>
-          <ul className="divide-y divide-black/[0.05]" aria-label="Search results">
+          <ul className="divide-y divide-divider" aria-label="Search results">
             {pilotRows.map((c) => (
               <li key={`pilot-${c.slug}`}>
                 <Link
@@ -118,7 +118,7 @@ export function SearchPage() {
                     ticker={c.ticker}
                     logoUrl={c.logoUrl}
                     size="md"
-                    className="shadow-[0_4px_16px_rgba(12,13,17,0.04)]"
+                    className="shadow-card-tight"
                   />
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="font-semibold tracking-tight text-ink group-hover:text-accent">
@@ -155,7 +155,7 @@ export function SearchPage() {
                     ticker={c.ticker}
                     logoUrl={resolveCompanyLogoUrl({ explicit: c.logo_url })}
                     size="md"
-                    className="shadow-[0_4px_16px_rgba(12,13,17,0.04)]"
+                    className="shadow-card-tight"
                   />
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="font-semibold tracking-tight text-ink group-hover:text-accent">

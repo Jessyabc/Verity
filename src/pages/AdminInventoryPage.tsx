@@ -142,14 +142,14 @@ export function AdminInventoryPage() {
             onChange={(e) => setSlug(e.target.value)}
             placeholder="acme-corp"
             required
-            className="border-black/[0.06] bg-white/80"
+            className="border-divider bg-surface-solid/80"
           />
           <Field
             label="Legal / display name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            className="border-black/[0.06] bg-white/80"
+            className="border-divider bg-surface-solid/80"
           />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
@@ -157,21 +157,21 @@ export function AdminInventoryPage() {
               value={ticker}
               onChange={(e) => setTicker(e.target.value)}
               placeholder="ACME"
-              className="border-black/[0.06] bg-white/80"
+              className="border-divider bg-surface-solid/80"
             />
             <Field
               label="Exchange"
               value={exchange}
               onChange={(e) => setExchange(e.target.value)}
               placeholder="NYSE"
-              className="border-black/[0.06] bg-white/80"
+              className="border-divider bg-surface-solid/80"
             />
           </div>
           <Field
             label="Tagline"
             value={tagline}
             onChange={(e) => setTagline(e.target.value)}
-            className="border-black/[0.06] bg-white/80"
+            className="border-divider bg-surface-solid/80"
           />
           <div className="space-y-2">
             <label
@@ -186,10 +186,10 @@ export function AdminInventoryPage() {
               onChange={(e) => setOverview(e.target.value)}
               rows={4}
               placeholder="Longer description for the profile card."
-              className="w-full rounded-xl border border-black/[0.08] bg-white/90 px-3.5 py-2.5 text-[15px] text-ink shadow-[0_1px_2px_rgba(12,13,17,0.04)] outline-none transition-[box-shadow,border-color] placeholder:text-ink-subtle focus:border-accent/40 focus:ring-2 focus:ring-accent/25"
+              className="input-field border-divider bg-surface-solid/90"
             />
           </div>
-          <div className="border-t border-black/[0.06] pt-5">
+          <div className="border-t border-divider pt-5">
             <p className="mb-3 text-[13px] font-medium text-ink">Monitor source</p>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field
@@ -197,13 +197,13 @@ export function AdminInventoryPage() {
                 value={sourceKey}
                 onChange={(e) => setSourceKey(e.target.value)}
                 hint="Stable id, e.g. ir, sec"
-                className="border-black/[0.06] bg-white/80"
+                className="border-divider bg-surface-solid/80"
               />
               <Field
                 label="Source label"
                 value={sourceLabel}
                 onChange={(e) => setSourceLabel(e.target.value)}
-                className="border-black/[0.06] bg-white/80"
+                className="border-divider bg-surface-solid/80"
               />
             </div>
             <Field
@@ -212,7 +212,7 @@ export function AdminInventoryPage() {
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="https://investor.example.com/"
               required
-              className="mt-4 border-black/[0.06] bg-white/80"
+              className="mt-4 border-divider bg-surface-solid/80"
             />
           </div>
 
@@ -244,7 +244,7 @@ export function AdminInventoryPage() {
         </form>
       </Card>
 
-      <Card className="border-dashed border-black/[0.12] bg-white/50 p-6 sm:p-8">
+      <Card className="border-dashed border-stroke bg-surface p-6 sm:p-8 dark:bg-white/[0.04]">
         <h2 className="text-[16px] font-medium text-ink">Add monitor URL to existing slug</h2>
         <p className="mt-1 text-[13px] text-ink-subtle">
           For <span className="font-mono text-[12px]">cik-*</span> SEC rows (or any company already in{' '}
@@ -258,20 +258,20 @@ export function AdminInventoryPage() {
             onChange={(e) => setExSlug(e.target.value)}
             placeholder="cik-320193"
             required
-            className="border-black/[0.06] bg-white/80"
+            className="border-divider bg-surface-solid/80"
           />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
               label="Source key"
               value={exSourceKey}
               onChange={(e) => setExSourceKey(e.target.value)}
-              className="border-black/[0.06] bg-white/80"
+              className="border-divider bg-surface-solid/80"
             />
             <Field
               label="Source label"
               value={exSourceLabel}
               onChange={(e) => setExSourceLabel(e.target.value)}
-              className="border-black/[0.06] bg-white/80"
+              className="border-divider bg-surface-solid/80"
             />
           </div>
           <Field
@@ -280,7 +280,7 @@ export function AdminInventoryPage() {
             onChange={(e) => setExBaseUrl(e.target.value)}
             placeholder="https://investor.apple.com/"
             required
-            className="border-black/[0.06] bg-white/80"
+            className="border-divider bg-surface-solid/80"
           />
 
           {exError ? (

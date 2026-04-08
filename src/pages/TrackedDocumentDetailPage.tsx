@@ -227,7 +227,7 @@ export function TrackedDocumentDetailPage({ id }: { id: string }) {
           </Card>
         ) : null}
 
-        <Card className="bg-white/60">
+        <Card className="bg-surface">
           <h2 className="text-[15px] font-medium text-ink">Source</h2>
           <a
             className="mt-3 inline-block font-medium text-accent underline decoration-accent/35 underline-offset-2"

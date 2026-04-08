@@ -70,7 +70,7 @@ export function LandingPage() {
             <Card
               key={item.title}
               padding="sm"
-              className="text-left shadow-[0_8px_30px_rgba(12,13,17,0.06)]"
+              className="text-left shadow-card-raised"
             >
               <h2 className="text-[15px] font-medium tracking-tight text-ink">
                 {item.title}

@@ -49,7 +49,7 @@ export function CompanyResearchSection({
 
   if (!isSupabaseConfigured()) {
     return (
-      <section className="mt-10 rounded-2xl border border-dashed border-black/[0.1] bg-white/40 px-6 py-8 shadow-none dark:border-white/[0.12] dark:bg-white/[0.04]">
+      <section className="mt-10 rounded-2xl border border-dashed border-stroke bg-surface px-6 py-8 shadow-none dark:bg-white/[0.04]">
         <h2 className="text-lg font-semibold tracking-tight text-ink">Research</h2>
         <p className="mt-2 text-[15px] leading-relaxed text-ink-muted">
           Connect Supabase to load cached research, or run{' '}
@@ -111,7 +111,7 @@ export function CompanyResearchSection({
       ) : null}
 
       {!loading && !hasNarratives && !hasHeadlines && !error ? (
-        <p className="rounded-2xl border border-black/[0.06] bg-white/50 px-6 py-8 text-[15px] leading-relaxed text-ink-muted dark:bg-white/[0.04]">
+        <p className="rounded-2xl border border-divider bg-surface px-6 py-8 text-[15px] leading-relaxed text-ink-muted dark:bg-white/[0.04]">
           No research yet. Deploy the <span className="font-mono text-[12px]">research-company</span>{' '}
           Edge Function and tap <span className="font-medium text-ink">Refresh research</span>, or
           run{' '}
@@ -181,7 +181,7 @@ export function CompanyResearchSection({
 
       {/* Headlines — supporting detail */}
       {hasHeadlines ? (
-        <div className="border-t border-black/[0.06] pt-8 dark:border-white/[0.08]">
+        <div className="border-t border-divider pt-8">
           <button
             type="button"
             className="flex w-full items-center justify-between gap-4 text-left"
@@ -204,7 +204,7 @@ export function CompanyResearchSection({
               {row.items.map((item: ResearchNewsItem, i: number) => (
                 <li
                   key={`${item.url}-${i}`}
-                  className="border-b border-black/[0.05] pb-5 last:border-0 last:pb-0 dark:border-white/[0.06]"
+                  className="border-b border-divider pb-5 last:border-0 last:pb-0"
                 >
                   <a
                     href={item.url}

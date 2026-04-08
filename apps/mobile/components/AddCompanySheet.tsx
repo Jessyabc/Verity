@@ -22,7 +22,7 @@ import {
 import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { formatUnknownError } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
-import { font, radius, space } from '@/constants/theme'
+import { font, onAccent, radius, space } from '@/constants/theme'
 
 function toSlug(name: string): string {
   return name
@@ -182,7 +182,7 @@ export function AddCompanySheet({ visible, onClose, onSuccess }: Props) {
             disabled={busy}
           >
             {busy ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={onAccent} />
             ) : (
               <Text style={styles.submitBtnText}>Add company</Text>
             )}
@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
     paddingVertical: space.md + 2,
     alignItems: 'center',
   },
-  submitBtnText: { fontFamily: font.semi, color: '#fff', fontSize: 16 },
+  submitBtnText: { fontFamily: font.semi, color: onAccent, fontSize: 16 },
 
   footnote: {
     fontFamily: font.regular,

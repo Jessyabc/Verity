@@ -12,7 +12,6 @@ import { useLocalSearchParams, useNavigation } from 'expo-router'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -21,6 +20,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import { FlatList } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useAuth } from '@/contexts/AuthContext'

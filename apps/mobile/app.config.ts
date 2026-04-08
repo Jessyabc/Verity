@@ -4,8 +4,8 @@ import type { ExpoConfig } from 'expo/config'
  * Verity — Expo / TestFlight
  *
  * Brand assets (`assets/images/`):
- * - icon.png — 1024×1024 App Store / Play icon (layered V, navy safe-area pad).
- * - adaptive-icon.png — Android foreground (1024×1024 centered V).
+ * - icon.png — 1024×1024 App Store / Play icon (transparent pad around mark).
+ * - adaptive-icon.png — Android foreground (1024×1024); use adaptive `backgroundColor` for legibility.
  * - verity-mark.png — symbol-only for compact UI (e.g. FABs).
  * - verity-wordmark.png — symbol + wordmark for in-app headers / splash.
  *

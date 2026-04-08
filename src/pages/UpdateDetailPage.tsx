@@ -125,7 +125,7 @@ export function UpdateDetailPage() {
           </ul>
         </Card>
 
-        <Card className="bg-white/60">
+        <Card className="bg-surface">
           <h2 className="text-[15px] font-medium text-ink">Sources</h2>
           <ul className="mt-3 space-y-2.5 text-[14px]">
             {update.sources.map((s) => (

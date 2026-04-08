@@ -3,7 +3,8 @@
  * Includes appearance (theme) preferences from ThemePreferenceContext.
  */
 import { useRouter } from 'expo-router'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { ScrollView } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useSidebar } from '@/components/Sidebar'

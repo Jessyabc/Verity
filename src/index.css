@@ -31,6 +31,22 @@
   --input-border: rgba(12, 13, 17, 0.1);
   --segment-bg: rgba(12, 13, 17, 0.05);
   --segment-active-bg: rgba(255, 255, 255, 0.95);
+  /* Elevation + controls — consumed by Tailwind `shadow-*` utilities */
+  --shadow-card-tight: 0 4px 16px rgba(12, 13, 17, 0.04);
+  --shadow-card-raised: 0 8px 28px rgba(12, 13, 17, 0.06);
+  --shadow-card-hover: 0 12px 40px rgba(12, 13, 17, 0.08);
+  --shadow-input: 0 1px 2px rgba(12, 13, 17, 0.04);
+  --shadow-control: 0 1px 2px rgba(12, 13, 17, 0.05);
+  --shadow-inset-highlight: 0 1px 0 rgba(255, 255, 255, 0.14) inset;
+  --shadow-inset-well: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  /* Hairline borders / dividers (lists, panels) */
+  --color-divider: rgba(12, 13, 17, 0.06);
+  /* Decorative accent used in marketing/profile gradients */
+  --color-accent-spot: #a855f7;
+  /* Slightly stronger surface for summary / hero cards */
+  --color-surface-elevated: color-mix(in srgb, var(--color-surface-solid) 70%, transparent);
+  /* Avatar / embossed ring on circular surfaces */
+  --shadow-inset-avatar: 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
 }
 
 html.dark {
@@ -62,6 +78,17 @@ html.dark {
   --input-border: rgba(255, 255, 255, 0.1);
   --segment-bg: rgba(255, 255, 255, 0.06);
   --segment-active-bg: rgba(255, 255, 255, 0.12);
+  --shadow-card-tight: 0 4px 18px rgba(0, 0, 0, 0.32);
+  --shadow-card-raised: 0 8px 30px rgba(0, 0, 0, 0.42);
+  --shadow-card-hover: 0 14px 44px rgba(0, 0, 0, 0.48);
+  --shadow-input: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-control: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-inset-highlight: 0 1px 0 rgba(255, 255, 255, 0.16) inset;
+  --shadow-inset-well: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  --color-divider: rgba(255, 255, 255, 0.08);
+  --color-accent-spot: #c084fc;
+  --color-surface-elevated: rgba(255, 255, 255, 0.1);
+  --shadow-inset-avatar: 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
 }
 
 @layer base {
@@ -71,6 +98,7 @@ html.dark {
     color: var(--color-ink-muted);
     background-color: var(--color-canvas);
     text-rendering: optimizeLegibility;
+    --segment-control-active-shadow: var(--nav-pill-active-shadow), 0 0 0 1px var(--color-stroke);
   }
   body {
     margin: 0;
@@ -112,6 +140,15 @@ html.dark .mesh-bg {
   box-shadow: var(--shadow-soft), var(--shadow-liquid);
 }
 
+/* Interactive glass cards: keep transform GPU-friendly */
+.glass-card-hoverable {
+  transition: box-shadow 200ms ease-out, transform 200ms ease-out;
+}
+.glass-card-hoverable:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card-hover);
+}
+
 .glass-header {
   background: var(--glass-header-bg);
   backdrop-filter: blur(28px) saturate(1.7);
@@ -136,6 +173,16 @@ html.dark .mesh-bg {
 
 @utility border-danger-hairline {
   border-color: var(--color-danger-border);
+}
+
+@layer components {
+  /* Shared with `Field` and admin textareas — avoids duplicated arbitrary shadows */
+  .input-field {
+    @apply w-full rounded-xl border px-3.5 py-2.5 text-[15px] text-ink outline-none transition-[box-shadow,border-color] placeholder:text-ink-subtle focus:border-accent/40 focus:ring-2 focus:ring-accent/25;
+    background: var(--input-bg);
+    border-color: var(--input-border);
+    box-shadow: var(--shadow-input);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

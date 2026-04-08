@@ -156,7 +156,7 @@ export function DashboardPage() {
       </header>
 
       {!hasWatchlist ? (
-        <Card className="border-dashed border-black/[0.12] bg-white/55 shadow-none">
+        <Card className="border-dashed border-stroke bg-surface shadow-none dark:bg-white/[0.04]">
           <div className="flex flex-col items-center py-12 text-center sm:py-16">
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft">
               <OrbIcon />
@@ -204,7 +204,7 @@ export function DashboardPage() {
                 </p>
               ) : null}
               {watchlistBrief ? (
-                <Card className="mt-4 border-black/[0.08] bg-white/70 shadow-[0_8px_32px_rgba(12,13,17,0.06)]">
+                <Card className="mt-4 border-stroke bg-surface-elevated shadow-card-raised">
                   <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-ink-muted">
                     {watchlistBrief}
                   </p>
@@ -242,7 +242,7 @@ export function DashboardPage() {
                 {researchErr}
               </p>
             ) : null}
-            <ul className="mt-4 divide-y divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.06] bg-white/55 dark:divide-white/[0.08] dark:border-white/[0.08] dark:bg-white/[0.04]">
+            <ul className="mt-4 divide-y divide-divider overflow-hidden rounded-2xl border border-divider bg-surface dark:bg-white/[0.04]">
               {/* Pilot companies */}
               {slugs
                 .map((slug) => {
@@ -337,7 +337,7 @@ export function DashboardPage() {
                 </p>
               ) : null}
               {!researchDigestLoading && researchDigest.length === 0 ? (
-                <Card className="mt-4 border-dashed border-black/[0.1] bg-white/45 shadow-none">
+                <Card className="mt-4 border-dashed border-stroke bg-surface shadow-none dark:bg-white/[0.04]">
                   <p className="text-[14px] leading-relaxed text-ink-muted">
                     No research cache yet — open a company and refresh research, or use{' '}
                     <span className="font-mono text-[12px]">Refresh research</span> here.
@@ -348,10 +348,7 @@ export function DashboardPage() {
                 <ul className="mt-4 space-y-3">
                   {researchDigest.map((h, i) => (
                     <li key={`${h.slug}-${h.item.url}-${i}`}>
-                      <Card
-                        padding="sm"
-                        className="transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:shadow-[0_12px_40px_rgba(12,13,17,0.08)]"
-                      >
+                      <Card padding="sm" interactive>
                         <p className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
                           <Link
                             to={`/app/company/${h.slug}`}
@@ -409,7 +406,7 @@ export function DashboardPage() {
                   </p>
                 ) : null}
                 {!dbLoading && !dbError && dbRows.length === 0 ? (
-                  <Card className="mt-4 border-dashed border-black/[0.1] bg-white/45 shadow-none">
+                  <Card className="mt-4 border-dashed border-stroke bg-surface shadow-none dark:bg-white/[0.04]">
                     <p className="text-[14px] leading-relaxed text-ink-muted">
                       No documents yet — apply migrations, add company sources, then run{' '}
                       <span className="font-mono text-[12px]">npm run monitor:once</span>.
@@ -420,10 +417,7 @@ export function DashboardPage() {
                   <ul className="mt-4 space-y-3">
                     {dbRows.map(({ document: d, companyName, companySlug }) => (
                       <li key={d.id}>
-                        <Card
-                          padding="sm"
-                          className="transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:shadow-[0_12px_40px_rgba(12,13,17,0.08)]"
-                        >
+                        <Card padding="sm" interactive>
                           <div className="flex items-start justify-between gap-3">
                             <p className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
                               <Link
@@ -488,10 +482,7 @@ export function DashboardPage() {
                 {pilotUpdates.map(({ company, update }) => (
                   <li key={update.id}>
                     <Link to={`/app/updates/${update.id}`}>
-                      <Card
-                        padding="sm"
-                        className="transition-[box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:shadow-[0_12px_40px_rgba(12,13,17,0.08)]"
-                      >
+                      <Card padding="sm" interactive>
                         <p className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
                           {company.name} · {update.sourceCategoryLabel}
                         </p>
@@ -517,7 +508,7 @@ export function DashboardPage() {
             ) : null}
 
             {!isSupabaseConfigured() && pilotUpdates.length === 0 ? (
-              <Card className="mt-4 border-dashed border-black/[0.1] bg-white/45 shadow-none">
+              <Card className="mt-4 border-dashed border-stroke bg-surface shadow-none dark:bg-white/[0.04]">
                 <p className="text-[14px] leading-relaxed text-ink-muted">
                   No sample documents for your current watchlist — try adding Microsoft or Apple to
                   see pilot entries.

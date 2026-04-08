@@ -2,23 +2,27 @@
  * Company profile / research — Verity brand: navy, teal, glass; gaps hero; strict source buckets.
  */
 
+import { HeaderBackButton, useHeaderHeight } from '@react-navigation/elements'
+import type { NativeStackHeaderBackProps } from '@react-navigation/native-stack'
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native'
+import { ScrollView } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BlurView } from 'expo-blur'
 import { LinearGradient } from 'expo-linear-gradient'
 
-import { LiquidGlassFAB } from '@/components/LiquidGlass'
-import { VerityWordmark } from '@/components/VerityWordmark'
+import Ionicons from '@expo/vector-icons/Ionicons'
+import { LiquidGlassHeaderIconButton } from '@/components/LiquidGlass'
+import { VerityMark } from '@/components/VerityMark'
 import { useAuth } from '@/contexts/AuthContext'
 import { BRAND } from '@/constants/brand'
 import { font, radius, space } from '@/constants/theme'
@@ -180,6 +184,11 @@ function NarrativeCard({
       ]}
     >
       <View style={styles.titleRow}>
+        {glass === 'navy' ? (
+          <View style={styles.narrTitleLead}>
+            <VerityMark size={24} />
+          </View>
+        ) : null}
         <Text style={[styles.narrTitle, { color: BRAND.onNavy }]}>{title}</Text>
         <View style={[styles.badge, { borderColor: BRAND.tealDark }]}>
           <Text style={[styles.badgeText, { color: BRAND.tealLight }]}>{badge}</Text>
@@ -244,6 +253,7 @@ export default function CompanyScreen() {
   const navigation = useNavigation()
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const headerHeight = useHeaderHeight()
   const { user } = useAuth()
 
   const [company, setCompany] = useState<CompanyRow | null>(null)
@@ -293,22 +303,7 @@ export default function CompanyScreen() {
     void load()
   }, [load])
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerTitle: () => <VerityWordmark height={26} />,
-      headerStyle: { backgroundColor: BRAND.navy },
-      headerTintColor: BRAND.tealLight,
-      headerTitleStyle: { color: BRAND.onNavy },
-    })
-  }, [navigation])
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true)
-    await load()
-    setRefreshing(false)
-  }, [load])
-
-  const toggleWatchlist = async () => {
+  const toggleWatchlist = useCallback(async () => {
     if (!user || !slug) return
     try {
       if (onWatchlist) {
@@ -321,7 +316,57 @@ export default function CompanyScreen() {
     } catch (e) {
       setError(formatUnknownError(e))
     }
-  }
+  }, [user, slug, onWatchlist])
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: '',
+      headerBackTitleVisible: false,
+      headerBackButtonDisplayMode: 'minimal',
+      headerTransparent: true,
+      headerShadowVisible: false,
+      headerTintColor: BRAND.tealLight,
+      headerBlurEffect:
+        Platform.OS === 'ios' ? ('systemChromeMaterialDark' as const) : undefined,
+      headerStyle: {
+        backgroundColor: Platform.OS === 'ios' ? 'transparent' : 'rgba(10, 37, 64, 0.72)',
+      },
+      headerBackground: () =>
+        Platform.OS === 'android' ? (
+          <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+        ) : null,
+      headerLeft: (_props: NativeStackHeaderBackProps) => (
+        <View style={styles.navLeft}>
+          <HeaderBackButton
+            displayMode="minimal"
+            tintColor={BRAND.tealLight}
+            onPress={() => navigation.goBack()}
+          />
+          <VerityMark size={26} />
+        </View>
+      ),
+      headerRight: () =>
+        user ? (
+          <LiquidGlassHeaderIconButton
+            accessibilityLabel={onWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+            active={onWatchlist}
+            onPress={() => void toggleWatchlist()}
+          >
+            <Ionicons
+              name={onWatchlist ? 'bookmark' : 'bookmark-outline'}
+              size={22}
+              color={onWatchlist ? BRAND.tealLight : BRAND.onNavySubtle}
+            />
+          </LiquidGlassHeaderIconButton>
+        ) : null,
+    })
+  }, [navigation, user, onWatchlist, toggleWatchlist])
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await load()
+    setRefreshing(false)
+  }, [load])
 
   const runResearch = async () => {
     if (!company) return
@@ -358,7 +403,7 @@ export default function CompanyScreen() {
 
   if (!slug) {
     return (
-      <View style={[styles.center, { backgroundColor: BRAND.navy }]}>
+      <View style={[styles.center, { backgroundColor: BRAND.navy, paddingTop: headerHeight }]}>
         <Text style={{ color: BRAND.onNavyMuted }}>Missing company.</Text>
       </View>
     )
@@ -366,7 +411,7 @@ export default function CompanyScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.center, { backgroundColor: BRAND.navy }]}>
+      <View style={[styles.center, { backgroundColor: BRAND.navy, paddingTop: headerHeight }]}>
         <ActivityIndicator color={BRAND.tealLight} size="large" />
       </View>
     )
@@ -374,7 +419,9 @@ export default function CompanyScreen() {
 
   if (!company) {
     return (
-      <View style={[styles.center, { backgroundColor: BRAND.navy, padding: space.xl }]}>
+      <View
+        style={[styles.center, { backgroundColor: BRAND.navy, padding: space.xl, paddingTop: headerHeight }]}
+      >
         <Text style={[styles.h1, { color: BRAND.onNavy }]}>Not found</Text>
         <Text style={{ color: BRAND.onNavyMuted, marginTop: space.md, textAlign: 'center' }}>
           {"This company isn't in the database yet."}
@@ -408,7 +455,10 @@ export default function CompanyScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollInner,
-          { paddingBottom: insets.bottom + space.xxl + 24 },
+          {
+            paddingTop: headerHeight + space.md,
+            paddingBottom: insets.bottom + space.xxl + 24,
+          },
         ]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={BRAND.tealLight} />
@@ -537,14 +587,6 @@ export default function CompanyScreen() {
         </Text>
       </ScrollView>
 
-      {user ? (
-        <LiquidGlassFAB
-          onPress={() => void toggleWatchlist()}
-          active={onWatchlist}
-          size={52}
-          style={[styles.fab, { top: insets.top + space.sm }]}
-        />
-      ) : null}
     </View>
   )
 }
@@ -552,7 +594,8 @@ export default function CompanyScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { flex: 1 },
-  scrollInner: { paddingHorizontal: space.lg, paddingTop: space.md, gap: space.lg },
+  scrollInner: { paddingHorizontal: space.lg, gap: space.lg },
+  navLeft: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: Platform.OS === 'ios' ? 4 : 0 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   h1: { fontFamily: font.semi, fontSize: 22 },
 
@@ -609,7 +652,8 @@ const styles = StyleSheet.create({
 
   narrativeInner: { padding: space.lg, borderRadius: radius.lg },
   titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm },
-  narrTitle: { fontFamily: font.semi, fontSize: 17 },
+  narrTitleLead: { marginRight: 2 },
+  narrTitle: { fontFamily: font.semi, fontSize: 17, flex: 1, minWidth: 0 },
   badge: {
     borderWidth: 1,
     borderRadius: radius.sm,
@@ -662,7 +706,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
-  fab: { position: 'absolute', right: space.lg },
   backBtn: {
     marginTop: space.xl,
     paddingVertical: space.md,

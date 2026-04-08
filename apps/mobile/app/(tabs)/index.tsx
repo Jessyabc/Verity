@@ -4,18 +4,16 @@
  * Layout:
  *   • Header: hamburger icon ← → "Watchlist" title
  *   • FlatList of company cards (research summaries)
- *   • Bottom: permanent glass search bar ("Add company to watchlist…")
- *     → tapping expands a modal sheet with live search results
+ *   • Bottom: liquid-glass search orb → tap opens full-screen Safari-style company search
  *   • Max 15 companies (upsell cap)
  */
 
 import { useFocusEffect, useRouter } from 'expo-router'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
-  Animated,
-  FlatList,
   Keyboard,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -24,10 +22,12 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import { FlatList } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import Ionicons from '@expo/vector-icons/Ionicons'
 import { CompanyLogo } from '@/components/CompanyLogo'
-import { LiquidGlassView } from '@/components/LiquidGlass'
+import { LiquidGlassSearchOrb } from '@/components/LiquidGlassSearchOrb'
 import { useSidebar } from '@/components/Sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
@@ -43,7 +43,7 @@ import {
   type WatchlistCompanyRow,
 } from '@/lib/watchlistApi'
 import { fetchResearchCacheRowsForSlugs, type CompanyResearchRow } from '@/lib/researchCache'
-import { font, radius, space } from '@/constants/theme'
+import { font, onAccent, radius, space } from '@/constants/theme'
 
 const WATCHLIST_CAP = 15
 
@@ -125,28 +125,15 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, colors, atCap }
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchCompanyRow[]>([])
   const [searching, setSearching] = useState(false)
-  const inputRef = useRef<TextInput>(null)
-  const slideAnim = useRef(new Animated.Value(300)).current
 
   useEffect(() => {
     if (visible) {
       setQuery('')
       setResults([])
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 200,
-        friction: 22,
-      }).start(() => inputRef.current?.focus())
     } else {
-      Animated.spring(slideAnim, {
-        toValue: 300,
-        useNativeDriver: true,
-        tension: 220,
-        friction: 24,
-      }).start()
+      Keyboard.dismiss()
     }
-  }, [visible, slideAnim])
+  }, [visible])
 
   useEffect(() => {
     if (!visible) return
@@ -167,62 +154,94 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, colors, atCap }
   return (
     <Modal
       visible={visible}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-      statusBarTranslucent
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={() => {
+        Keyboard.dismiss()
+        onClose()
+      }}
     >
-      <Pressable
-        style={styles.modalBackdrop}
-        onPress={() => { Keyboard.dismiss(); onClose() }}
-      />
-
-      <Animated.View
-        style={[
-          styles.searchPanel,
-          {
-            backgroundColor: colors.surfaceSolid,
-            paddingBottom: insets.bottom + space.sm,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
+      <KeyboardAvoidingView
+        style={[styles.searchScreenRoot, { backgroundColor: colors.canvas }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={[styles.handle, { backgroundColor: colors.stroke }]} />
-
-        {atCap ? (
-          <View style={styles.capMessage}>
-            <Text style={[styles.capTitle, { color: colors.ink }]}>Watchlist full</Text>
-            <Text style={[styles.capBody, { color: colors.inkMuted }]}>
-              {"You're tracking"} {WATCHLIST_CAP} companies — the maximum on the current plan.
-              Remove a company to add another.
+        <View style={[styles.searchScreenInner, { backgroundColor: colors.canvas }]}>
+          <View
+            style={[
+              styles.safariChrome,
+              {
+                paddingTop: insets.top + 6,
+                borderBottomColor: colors.stroke,
+                backgroundColor: colors.canvas,
+              },
+            ]}
+          >
+            <Text
+              style={[styles.safariEcho, { color: query.length > 0 ? colors.ink : colors.inkSubtle }]}
+              numberOfLines={2}
+            >
+              {query.length > 0 ? query : 'Company name or ticker'}
             </Text>
-          </View>
-        ) : (
-          <>
-            <View style={[styles.inputRow, { borderBottomColor: colors.stroke }]}>
-              <Text style={[styles.searchIcon, { color: colors.inkSubtle }]}>⌕</Text>
-              <TextInput
-                ref={inputRef}
-                style={[styles.input, { color: colors.ink }]}
-                placeholder="Search companies…"
-                placeholderTextColor={colors.inkSubtle}
-                value={query}
-                onChangeText={setQuery}
-                returnKeyType="search"
-                autoCapitalize="none"
-                autoCorrect={false}
-                clearButtonMode={Platform.OS === 'ios' ? 'while-editing' : 'never'}
-              />
-              {searching ? (
-                <ActivityIndicator size="small" color={colors.accent} />
-              ) : null}
-            </View>
 
+            <View style={styles.safariControlRow}>
+              <Pressable
+                onPress={() => {
+                  Keyboard.dismiss()
+                  onClose()
+                }}
+                hitSlop={12}
+                style={styles.safariCancelHit}
+              >
+                <Text style={[styles.safariCancel, { color: colors.accent }]}>Cancel</Text>
+              </Pressable>
+              <View
+                style={[
+                  styles.safariFieldPill,
+                  {
+                    backgroundColor: colors.surfaceSolid,
+                    borderColor: colors.stroke,
+                  },
+                ]}
+              >
+                <Ionicons name="search" size={18} color={colors.inkSubtle} style={styles.safariFieldIcon} />
+                <TextInput
+                  style={[styles.safariFieldInput, { color: colors.ink }]}
+                  placeholder="Search or enter company…"
+                  placeholderTextColor={colors.inkSubtle}
+                  value={query}
+                  onChangeText={setQuery}
+                  returnKeyType="search"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  clearButtonMode={Platform.OS === 'ios' ? 'while-editing' : 'never'}
+                  autoFocus
+                />
+                {searching ? (
+                  <ActivityIndicator size="small" color={colors.accent} style={styles.safariSpinner} />
+                ) : null}
+              </View>
+            </View>
+          </View>
+
+          {atCap ? (
+            <View style={styles.capMessage}>
+              <Text style={[styles.capTitle, { color: colors.ink }]}>Watchlist full</Text>
+              <Text style={[styles.capBody, { color: colors.inkMuted }]}>
+                {"You're tracking"} {WATCHLIST_CAP} companies — the maximum on the current plan. Remove a
+                company to add another.
+              </Text>
+            </View>
+          ) : (
             <FlatList
               data={results}
               keyExtractor={(item) => item.id}
               keyboardShouldPersistTaps="handled"
-              style={styles.resultsList}
+              keyboardDismissMode="on-drag"
+              style={styles.resultsListFlex}
+              {...(Platform.OS === 'ios'
+                ? { contentInsetAdjustmentBehavior: 'automatic' as const }
+                : {})}
+              contentContainerStyle={{ paddingBottom: insets.bottom + 24, flexGrow: 1 }}
               ListEmptyComponent={
                 !searching ? (
                   <Text style={[styles.emptyResults, { color: colors.inkSubtle }]}>
@@ -243,7 +262,10 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, colors, atCap }
                       },
                     ]}
                     onPress={() => {
-                      if (!inList) { Keyboard.dismiss(); onSelect(item.slug) }
+                      if (!inList) {
+                        Keyboard.dismiss()
+                        onSelect(item.slug)
+                      }
                     }}
                     disabled={inList}
                   >
@@ -264,17 +286,20 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, colors, atCap }
                       ) : null}
                     </View>
                     {inList ? (
-                      <Text style={[styles.inListLabel, { color: colors.accent }]}>★</Text>
+                      <Ionicons name="bookmark" size={22} color={colors.accent} accessibilityLabel="On watchlist" />
                     ) : (
-                      <Text style={[styles.addLabel, { color: colors.accent }]}>+ Add</Text>
+                      <View style={styles.addToWatchRow}>
+                        <Ionicons name="add-circle-outline" size={22} color={colors.accent} />
+                        <Text style={[styles.addLabel, { color: colors.accent }]}>Add</Text>
+                      </View>
                     )}
                   </Pressable>
                 )
               }}
             />
-          </>
-        )}
-      </Animated.View>
+          )}
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
@@ -401,7 +426,7 @@ export default function WatchlistScreen() {
           contentContainerStyle={{
             marginHorizontal: space.lg,
             marginTop: space.sm,
-            paddingBottom: insets.bottom + 110,
+            paddingBottom: insets.bottom + 88,
             borderRadius: radius.lg,
             overflow: 'hidden',
             backgroundColor: colors.surfaceSolid,
@@ -420,33 +445,23 @@ export default function WatchlistScreen() {
         />
       )}
 
-      {/* ── Permanent bottom search bar ── */}
+      {/* ── Bottom liquid-glass search orb ── */}
       <View
-        style={[
-          styles.searchBarContainer,
-          { paddingBottom: insets.bottom + space.sm },
-        ]}
+        style={[styles.searchOrbContainer, { paddingBottom: insets.bottom + space.md }]}
+        pointerEvents="box-none"
       >
-        <LiquidGlassView
-          radius={20}
-          style={styles.searchBar}
-          innerStyle={{ paddingVertical: 0 }}
-          shadow
-        >
-          <Pressable
-            style={styles.searchBarInner}
-            onPress={() => setShowSearch(true)}
-            accessibilityRole="search"
-            accessibilityLabel="Add company to watchlist"
-          >
-            <Text style={[styles.searchBarIcon, { color: colors.inkSubtle }]}>⌕</Text>
-            <Text style={[styles.searchBarPlaceholder, { color: colors.inkSubtle }]}>
-              {atCap
-                ? `Watchlist full (${WATCHLIST_CAP}/${WATCHLIST_CAP})`
-                : 'Add company to watchlist…'}
-            </Text>
-          </Pressable>
-        </LiquidGlassView>
+        <LiquidGlassSearchOrb
+          onOpen={() => {
+            if (!atCap) setShowSearch(true)
+          }}
+          disabled={atCap}
+          iconColor={atCap ? colors.inkSubtle : colors.ink}
+          accessibilityLabel={
+            atCap
+              ? `Watchlist full, ${WATCHLIST_CAP} of ${WATCHLIST_CAP} companies`
+              : 'Add company to watchlist, open search'
+          }
+        />
       </View>
 
       {/* ── Search modal ── */}
@@ -511,66 +526,58 @@ const styles = StyleSheet.create({
     marginBottom: space.xl,
   },
   emptyBtn:     { borderRadius: radius.sm, paddingVertical: space.md, alignItems: 'center' },
-  emptyBtnText: { fontFamily: font.semi, color: '#fff', fontSize: 15 },
+  emptyBtnText: { fontFamily: font.semi, color: onAccent, fontSize: 15 },
 
-  searchBarContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: space.lg,
-    right: space.lg,
-  },
-  searchBar: {},
-  searchBarInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    paddingHorizontal: space.md,
-    paddingVertical: 15,
-  },
-  searchBarIcon:        { fontSize: 18, lineHeight: 22, marginTop: -1 },
-  searchBarPlaceholder: { fontFamily: font.regular, fontSize: 16 },
-
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  searchPanel: {
+  searchOrbContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '75%',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: -4 },
-    elevation: 10,
+    alignItems: 'center',
   },
-  handle: {
-    width: 36, height: 4, borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: space.md,
-    marginBottom: space.sm,
+
+  searchScreenRoot: { flex: 1 },
+  searchScreenInner: { flex: 1 },
+  safariChrome: {
+    paddingHorizontal: space.md,
+    paddingBottom: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  inputRow: {
+  safariEcho: {
+    fontFamily: font.semi,
+    fontSize: 28,
+    letterSpacing: -0.6,
+    lineHeight: 34,
+    marginBottom: space.md,
+    minHeight: 36,
+  },
+  safariControlRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    paddingHorizontal: space.lg,
-    paddingVertical: space.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  searchIcon: { fontSize: 18, lineHeight: 22, marginTop: -1 },
-  input: {
+  safariCancelHit: { paddingVertical: 8, paddingRight: 4 },
+  safariCancel: { fontFamily: font.regular, fontSize: 17 },
+  safariFieldPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 48,
+    paddingRight: space.sm,
+  },
+  safariFieldIcon: { marginLeft: 12 },
+  safariFieldInput: {
     flex: 1,
     fontFamily: font.regular,
     fontSize: 17,
-    height: 22,
-    padding: 0,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 10,
+    paddingHorizontal: 10,
+    paddingRight: 8,
   },
-  resultsList: { maxHeight: 380 },
+  safariSpinner: { marginRight: 8 },
+  resultsListFlex: { flex: 1 },
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -582,7 +589,7 @@ const styles = StyleSheet.create({
   resultText:   { flex: 1, minWidth: 0 },
   resultName:   { fontFamily: font.semi, fontSize: 15 },
   resultMeta:   { fontFamily: font.regular, fontSize: 13, marginTop: 2 },
-  inListLabel:  { fontFamily: font.medium, fontSize: 16 },
+  addToWatchRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   addLabel:     { fontFamily: font.semi, fontSize: 13 },
   emptyResults: {
     fontFamily: font.regular,

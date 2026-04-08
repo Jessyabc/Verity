@@ -144,6 +144,76 @@ export function LiquidGlassPressable({
   )
 }
 
+// ─── LiquidGlassHeaderIconButton ────────────────────────────────────────────
+/** Compact control for native stack headers (watchlist star, etc.). */
+
+type LiquidGlassHeaderIconButtonProps = {
+  onPress: () => void
+  accessibilityLabel: string
+  /** Teal / navy-friendly defaults; override for brand chrome on dark headers. */
+  active?: boolean
+  children: React.ReactNode
+}
+
+export function LiquidGlassHeaderIconButton({
+  onPress,
+  accessibilityLabel,
+  active = false,
+  children,
+}: LiquidGlassHeaderIconButtonProps) {
+  const cs = useColorScheme()
+  const dark = cs === 'dark'
+  const h = 36
+  const r = h / 2
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      hitSlop={10}
+      style={({ pressed }) => [
+        dark ? styles.shadowDark : styles.shadowLight,
+        {
+          height: h,
+          minWidth: h,
+          borderRadius: r,
+          opacity: pressed ? 0.82 : 1,
+          marginRight: 10,
+        },
+      ]}
+    >
+      <BlurView
+        intensity={dark ? 88 : 76}
+        tint={tint(dark) as never}
+        style={[
+          styles.blur,
+          {
+            height: h,
+            minWidth: h,
+            borderRadius: r,
+            borderColor: active ? 'rgba(140, 198, 192, 0.55)' : borderColor(dark),
+            borderWidth: active ? 1.5 : StyleSheet.hairlineWidth,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.fill,
+            styles.fabFill,
+            {
+              backgroundColor: active ? 'rgba(140, 198, 192, 0.14)' : fillColor(dark),
+            },
+          ]}
+        >
+          <View style={styles.specular} pointerEvents="none" />
+          {children}
+        </View>
+      </BlurView>
+    </Pressable>
+  )
+}
+
 // ─── LiquidGlassFAB ───────────────────────────────────────────────────────
 // Round floating action button — the watchlist "+" bubble.
 
