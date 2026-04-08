@@ -6,7 +6,7 @@ export function VerityMark({ size = 28 }: { size?: number }) {
     <Image
       source={require('@/assets/images/verity-mark.png')}
       accessibilityLabel="Verity"
-      style={{ width: size, height: size }}
+      style={{ width: size, height: size, backgroundColor: 'transparent' }}
       resizeMode="contain"
     />
   )

@@ -57,7 +57,7 @@ export function CompanyLogo({
   const fallbackBg = tone === 'brand' ? 'rgba(92, 154, 154, 0.2)' : colors.accentSoft
   const fallbackBorder = tone === 'brand' ? BRAND.stroke : colors.stroke
   const fallbackInk = tone === 'brand' ? BRAND.onNavy : colors.ink
-  const imgBorder = tone === 'brand' ? BRAND.stroke : colors.stroke
+  const imgBorder = tone === 'brand' ? 'transparent' : colors.stroke
 
   if (!uri || failed) {
     return (
@@ -83,12 +83,13 @@ export function CompanyLogo({
       source={{ uri }}
       style={[
         styles.image,
+        tone === 'brand' ? styles.imageBrand : null,
         {
           width: dim,
           height: dim,
           borderRadius: radius.md,
           borderColor: imgBorder,
-          backgroundColor: tone === 'brand' ? 'rgba(255,255,255,0.06)' : '#fff',
+          backgroundColor: tone === 'brand' ? 'transparent' : '#fff',
         },
       ]}
       resizeMode="contain"
@@ -116,5 +117,8 @@ const styles = StyleSheet.create({
   },
   image: {
     borderWidth: 1,
+  },
+  imageBrand: {
+    borderWidth: 0,
   },
 })
