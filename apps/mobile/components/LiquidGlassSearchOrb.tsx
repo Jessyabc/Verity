@@ -16,6 +16,8 @@ type Props = {
   disabled?: boolean
   iconColor: string
   accessibilityLabel?: string
+  /** Use on `BRAND.navy` screens — stronger dark material + frost tuned for teal/navy. */
+  variant?: 'default' | 'onNavy'
 }
 
 export function LiquidGlassSearchOrb({
@@ -23,9 +25,10 @@ export function LiquidGlassSearchOrb({
   disabled = false,
   iconColor,
   accessibilityLabel = 'Search companies to add to watchlist',
+  variant = 'default',
 }: Props) {
   const scheme = useColorScheme()
-  const dark = scheme === 'dark'
+  const dark = variant === 'onNavy' ? true : scheme === 'dark'
   const blurTint = dark ? ('systemChromeMaterialDark' as const) : ('systemChromeMaterialLight' as const)
 
   return (
@@ -43,12 +46,12 @@ export function LiquidGlassSearchOrb({
       >
         <View style={[styles.dropShadow, dark ? styles.shadowDark : styles.shadowLight]}>
           <View style={styles.orbClip}>
-            <BlurView intensity={dark ? 100 : 96} tint={blurTint} style={styles.blur}>
+            <BlurView intensity={variant === 'onNavy' ? 88 : dark ? 100 : 96} tint={blurTint} style={styles.blur}>
               <LinearGradient
                 pointerEvents="none"
                 colors={
-                  dark
-                    ? ['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.04)', 'rgba(0,0,0,0.08)']
+                  variant === 'onNavy' || dark
+                    ? ['rgba(140,198,192,0.18)', 'rgba(255,255,255,0.08)', 'rgba(0,0,0,0.12)']
                     : ['rgba(255,255,255,0.82)', 'rgba(255,255,255,0.28)', 'rgba(255,255,255,0.08)']
                 }
                 start={{ x: 0.12, y: 0 }}
@@ -59,18 +62,30 @@ export function LiquidGlassSearchOrb({
                 style={[
                   styles.inner,
                   {
-                    backgroundColor: dark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.22)',
+                    backgroundColor:
+                      variant === 'onNavy'
+                        ? 'rgba(10,37,64,0.35)'
+                        : dark
+                          ? 'rgba(255,255,255,0.06)'
+                          : 'rgba(255,255,255,0.22)',
                   },
                 ]}
               >
                 <LinearGradient
                   pointerEvents="none"
-                  colors={['rgba(255,255,255,0.6)', 'rgba(255,255,255,0)', 'transparent']}
+                  colors={
+                    variant === 'onNavy'
+                      ? ['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'transparent']
+                      : ['rgba(255,255,255,0.6)', 'rgba(255,255,255,0)', 'transparent']
+                  }
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 0.55 }}
                   style={styles.topGlow}
                 />
-                <View pointerEvents="none" style={styles.rimLine} />
+                <View
+                  pointerEvents="none"
+                  style={[styles.rimLine, variant === 'onNavy' && styles.rimLineOnNavy]}
+                />
                 <View pointerEvents="none" style={styles.bottomFrost} />
                 <Ionicons name="search" size={ICON} color={iconColor} style={styles.icon} />
               </View>
@@ -144,6 +159,9 @@ const styles = StyleSheet.create({
     height: 2,
     borderRadius: 1,
     backgroundColor: 'rgba(255,255,255,0.55)',
+  },
+  rimLineOnNavy: {
+    backgroundColor: 'rgba(140,198,192,0.35)',
   },
   bottomFrost: {
     position: 'absolute',

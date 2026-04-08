@@ -68,14 +68,39 @@ export function groupHeadlines(
 
 /** Classify a research item as official (IR/SEC) or external. */
 export function classifyItem(item: ResearchNewsItem): 'official' | 'external' {
-  const url = item.url.toLowerCase()
   const src = (item.source ?? '').toLowerCase()
+  const rawUrl = item.url
+  let host = ''
+  let path = ''
+  try {
+    const u = new URL(rawUrl)
+    host = u.hostname.toLowerCase()
+    path = u.pathname.toLowerCase()
+  } catch {
+    const lower = rawUrl.toLowerCase()
+    host = lower
+    path = lower
+  }
+
+  // Treat syndicated PR wires as company messaging (not independent media).
   if (
-    url.includes('sec.gov') ||
-    url.includes('edgar') ||
-    url.includes('/ir/') ||
-    url.includes('investor-relations') ||
-    url.includes('investors.') ||
+    host.includes('prnewswire.com') ||
+    host.includes('globenewswire.com') ||
+    host.includes('businesswire.com') ||
+    host.includes('newsfilecorp.com') ||
+    host.includes('newsfile.com')
+  ) {
+    return 'official'
+  }
+
+  if (
+    host.includes('sec.gov') ||
+    path.includes('edgar') ||
+    host.startsWith('ir.') ||
+    host.includes('investors.') ||
+    path.includes('/ir/') ||
+    path.includes('investor-relations') ||
+    path.includes('/investor') ||
     src.includes('sec') ||
     src.includes('form 4') ||
     src.includes('10-k') ||
