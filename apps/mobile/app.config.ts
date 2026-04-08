@@ -3,6 +3,12 @@ import type { ExpoConfig } from 'expo/config'
 /**
  * Verity — Expo / TestFlight
  *
+ * Brand assets (`assets/images/`):
+ * - icon.png — 1024×1024 App Store / Play icon (layered V, navy safe-area pad).
+ * - adaptive-icon.png — Android foreground (1024×1024 centered V).
+ * - verity-mark.png — symbol-only for compact UI (e.g. FABs).
+ * - verity-wordmark.png — symbol + wordmark for in-app headers / splash.
+ *
  * Before your first EAS iOS build:
  * - Replace `ios.bundleIdentifier` with your App ID (e.g. com.yourcompany.verity). It must match App Store Connect.
  * - In Apple Developer → Identifiers, create the App ID with the same string.
@@ -45,7 +51,7 @@ const config: ExpoConfig = {
   android: {
     adaptiveIcon: {
       foregroundImage: './assets/images/adaptive-icon.png',
-      backgroundColor: '#ffffff',
+      backgroundColor: '#0A2540',
     },
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,

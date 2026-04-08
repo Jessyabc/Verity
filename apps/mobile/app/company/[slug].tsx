@@ -18,7 +18,7 @@ import { BlurView } from 'expo-blur'
 import { LinearGradient } from 'expo-linear-gradient'
 
 import { LiquidGlassFAB } from '@/components/LiquidGlass'
-import { VerityMark } from '@/components/VerityMark'
+import { VerityWordmark } from '@/components/VerityWordmark'
 import { useAuth } from '@/contexts/AuthContext'
 import { BRAND } from '@/constants/brand'
 import { font, radius, space } from '@/constants/theme'
@@ -295,7 +295,7 @@ export default function CompanyScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerTitle: () => <VerityMark size={32} />,
+      headerTitle: () => <VerityWordmark height={26} />,
       headerStyle: { backgroundColor: BRAND.navy },
       headerTintColor: BRAND.tealLight,
       headerTitleStyle: { color: BRAND.onNavy },
