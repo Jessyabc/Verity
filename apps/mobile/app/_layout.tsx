@@ -111,7 +111,7 @@ function AuthAwareStack() {
           }}
         />
         <Stack.Screen
-          name="chat/[slug]"
+          name="chat/[slug]/index"
           options={{
             headerShown: true,
             headerBackTitle: 'Back',
