@@ -1,0 +1,111 @@
+/**
+ * Client-side helpers for Afaqi conversation and message persistence.
+ *
+ * Conversations are keyed by (user_id, slug). A user can have many conversations
+ * per company; each conversation is a separate chat thread.
+ */
+
+import { supabase } from '@/lib/supabase'
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type Conversation = {
+  id: string
+  user_id: string
+  slug: string
+  title: string | null
+  last_message_at: string
+  created_at: string
+}
+
+export type ChatMessageRow = {
+  id: string
+  conversation_id: string
+  role: 'user' | 'assistant'
+  content: string
+  sources_json: AfaqiSourceRow[] | null
+  extra_context_slugs: string[] | null
+  created_at: string
+}
+
+export type AfaqiSourceRow = {
+  title: string
+  url: string
+  source?: string
+}
+
+// ---------------------------------------------------------------------------
+// Conversations
+// ---------------------------------------------------------------------------
+
+/** Returns all conversations for a user + company slug, newest first. */
+export async function fetchConversations(slug: string): Promise<Conversation[]> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('id, user_id, slug, title, last_message_at, created_at')
+    .eq('slug', slug)
+    .order('last_message_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []) as Conversation[]
+}
+
+/** Creates a new conversation and returns it. */
+export async function createConversation(
+  userId: string,
+  slug: string,
+): Promise<Conversation> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .insert({ user_id: userId, slug })
+    .select('id, user_id, slug, title, last_message_at, created_at')
+    .single()
+
+  if (error) throw error
+  return data as Conversation
+}
+
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
+
+const PAGE_SIZE = 20
+
+/**
+ * Loads the most recent `PAGE_SIZE` messages for a conversation.
+ * Returns messages in ascending order (oldest first) for display.
+ */
+export async function fetchMessages(conversationId: string): Promise<ChatMessageRow[]> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('id, conversation_id, role, content, sources_json, extra_context_slugs, created_at')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: false })
+    .limit(PAGE_SIZE)
+
+  if (error) throw error
+  return ((data ?? []) as ChatMessageRow[]).reverse()
+}
+
+/**
+ * Loads the next page of older messages (lazy load on scroll-to-top).
+ * `before` is the `created_at` of the oldest currently-loaded message.
+ * Returns messages in ascending order.
+ */
+export async function fetchOlderMessages(
+  conversationId: string,
+  before: string,
+): Promise<ChatMessageRow[]> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('id, conversation_id, role, content, sources_json, extra_context_slugs, created_at')
+    .eq('conversation_id', conversationId)
+    .lt('created_at', before)
+    .order('created_at', { ascending: false })
+    .limit(PAGE_SIZE)
+
+  if (error) throw error
+  return ((data ?? []) as ChatMessageRow[]).reverse()
+}

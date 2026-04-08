@@ -1,10 +1,11 @@
 /**
- * Afaqi — contextual research companion for a specific company.
+ * Afaqi chat screen for a specific conversation thread.
  *
- * Rules:
- *  - Answers only from the company's current research context.
- *  - Cites sources in each response.
- *  - Clearly marks uncertainty vs. verified evidence.
+ * Capabilities:
+ *  - Loads persisted message history from DB on mount (lazy loads older messages on scroll-to-top)
+ *  - Sends only the new message to the Edge Function (history is managed server-side)
+ *  - Adapts the context pill to show all companies active in the current context
+ *  - Supports cross-company research and live Perplexity answers transparently
  */
 
 import { FunctionsHttpError } from '@supabase/supabase-js'
@@ -29,6 +30,11 @@ import { fetchResearchCacheRow } from '@/lib/researchCache'
 import { openUrl } from '@/lib/openUrl'
 import { supabase } from '@/lib/supabase'
 import { font, radius, space } from '@/constants/theme'
+import { fetchMessages, fetchOlderMessages, type ChatMessageRow } from '@/lib/chatApi'
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 type AfaqiSource = {
   title: string
@@ -41,10 +47,26 @@ type Message = {
   role: 'user' | 'assistant'
   content: string
   sources?: AfaqiSource[]
+  /** DB row timestamp — used as the cursor for lazy loading older messages. */
+  createdAt?: string
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function safeHostname(url: string): string {
   try { return new URL(url).hostname } catch { return url }
+}
+
+function rowToMessage(row: ChatMessageRow): Message {
+  return {
+    id: row.id,
+    role: row.role,
+    content: row.content,
+    sources: row.sources_json ?? undefined,
+    createdAt: row.created_at,
+  }
 }
 
 async function formatInvokeError(error: unknown): Promise<string> {
@@ -55,14 +77,16 @@ async function formatInvokeError(error: unknown): Promise<string> {
         const body = (await (res as Response).clone().json()) as { error?: string; message?: string }
         if (typeof body?.error === 'string') return body.error
         if (typeof body?.message === 'string') return body.message
-      } catch {
-        /* fall through */
-      }
+      } catch { /* fall through */ }
     }
   }
   if (error instanceof Error) return error.message
   return 'Unknown error'
 }
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
 
 function UserBubble({ msg, colors }: { msg: Message; colors: ReturnType<typeof useVerityPalette> }) {
   return (
@@ -74,13 +98,7 @@ function UserBubble({ msg, colors }: { msg: Message; colors: ReturnType<typeof u
   )
 }
 
-function AssistantBubble({
-  msg,
-  colors,
-}: {
-  msg: Message
-  colors: ReturnType<typeof useVerityPalette>
-}) {
+function AssistantBubble({ msg, colors }: { msg: Message; colors: ReturnType<typeof useVerityPalette> }) {
   return (
     <View style={styles.assistantRow}>
       <View style={styles.assistantAvatar}>
@@ -123,19 +141,41 @@ function TypingIndicator({ colors }: { colors: ReturnType<typeof useVerityPalett
   )
 }
 
+function LoadMoreIndicator({ colors }: { colors: ReturnType<typeof useVerityPalette> }) {
+  return (
+    <View style={styles.loadMoreRow}>
+      <ActivityIndicator size="small" color={colors.accent} />
+    </View>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Screen
+// ---------------------------------------------------------------------------
+
 export default function ChatScreen() {
-  const { slug: slugParam } = useLocalSearchParams<{ slug: string }>()
-  const slug      = typeof slugParam === 'string' ? slugParam : slugParam?.[0] ?? ''
+  const { slug: slugParam, conversationId: convParam } = useLocalSearchParams<{
+    slug: string
+    conversationId: string
+  }>()
+  const slug = typeof slugParam === 'string' ? slugParam : slugParam?.[0] ?? ''
+  const conversationId = typeof convParam === 'string' ? convParam : convParam?.[0] ?? ''
+
   const navigation = useNavigation()
-  const insets     = useSafeAreaInsets()
-  const colors     = useVerityPalette()
-  const { user }   = useAuth()
+  const insets = useSafeAreaInsets()
+  const colors = useVerityPalette()
+  const { user } = useAuth()
 
   const [companyName, setCompanyName] = useState<string>(slug)
-  const [messages, setMessages]       = useState<Message[]>([])
-  const [input, setInput]             = useState('')
-  const [loading, setLoading]         = useState(false)
-  const [contextLoaded, setContextLoaded] = useState(false)
+  /** Extra company names loaded into context during this session (for context pill). */
+  const [extraCompanyNames, setExtraCompanyNames] = useState<string[]>([])
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [historyReady, setHistoryReady] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [hasOlderMessages, setHasOlderMessages] = useState(false)
+
   const listRef = useRef<FlatList>(null)
 
   useLayoutEffect(() => {
@@ -147,27 +187,60 @@ export default function ChatScreen() {
     })
   }, [navigation, companyName, colors])
 
+  // Load company name + initial message history
   useEffect(() => {
-    if (!slug) return
-    void fetchResearchCacheRow(slug).then((r) => {
-      if (r?.company_name) setCompanyName(r.company_name)
-      setContextLoaded(true)
+    if (!slug || !conversationId) return
 
-      // Seed a welcome message
-      const itemCount = r?.items?.length ?? 0
-      const welcome: Message = {
-        id: 'welcome',
-        role: 'assistant',
-        content: itemCount > 0
-          ? `I have ${itemCount} research source${itemCount === 1 ? '' : 's'} loaded for ${r?.company_name ?? slug}. What would you like to explore?`
-          : `No research has been run for ${slug} yet. Go back to the company profile and hit "Run research" first, then return here.`,
-        sources: [],
+    void (async () => {
+      try {
+        // Load company name from research cache
+        const r = await fetchResearchCacheRow(slug)
+        if (r?.company_name) setCompanyName(r.company_name)
+      } catch { /* non-critical */ }
+
+      try {
+        const rows = await fetchMessages(conversationId)
+        if (rows.length > 0) {
+          setMessages(rows.map(rowToMessage))
+          // If we got a full page back, there might be older messages
+          setHasOlderMessages(rows.length >= 20)
+        } else {
+          // Fresh conversation — seed a welcome message (not persisted to DB)
+          const itemCount = (await fetchResearchCacheRow(slug))?.items?.length ?? 0
+          const compName = (await fetchResearchCacheRow(slug))?.company_name ?? slug
+          setMessages([{
+            id: 'welcome',
+            role: 'assistant',
+            content: itemCount > 0
+              ? `I have ${itemCount} research source${itemCount === 1 ? '' : 's'} loaded for ${compName}. What would you like to explore?`
+              : `No research has been run for ${slug} yet. Go back to the company profile and hit "Refresh" first, then return here.`,
+          }])
+        }
+      } catch { /* non-critical */ }
+
+      setHistoryReady(true)
+    })()
+  }, [slug, conversationId])
+
+  /** Load older messages when the user scrolls to the top. */
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingOlder || !hasOlderMessages) return
+    const oldest = messages.find((m) => m.createdAt)
+    if (!oldest?.createdAt) return
+
+    setLoadingOlder(true)
+    try {
+      const older = await fetchOlderMessages(conversationId, oldest.createdAt)
+      if (older.length === 0) {
+        setHasOlderMessages(false)
+        return
       }
-      setMessages([welcome])
-    }).catch(() => {
-      setContextLoaded(true)
-    })
-  }, [slug])
+      setMessages((prev) => [...older.map(rowToMessage), ...prev])
+      setHasOlderMessages(older.length >= 20)
+    } catch { /* non-critical */ } finally {
+      setLoadingOlder(false)
+    }
+  }, [conversationId, loadingOlder, hasOlderMessages, messages])
 
   const sendMessage = useCallback(async () => {
     const text = input.trim()
@@ -178,22 +251,14 @@ export default function ChatScreen() {
       role: 'user',
       content: text,
     }
-    const history = [...messages, userMsg]
-    setMessages(history)
+    setMessages((prev) => [...prev, userMsg])
     setInput('')
     setLoading(true)
-
-    // Scroll to end
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100)
 
     try {
-      // Build the conversation history (exclude the welcome message from context)
-      const apiMessages = history
-        .filter((m) => m.id !== 'welcome')
-        .map((m) => ({ role: m.role, content: m.content }))
-
       const { data, error } = await supabase.functions.invoke('afaqi-chat', {
-        body: { slug, messages: apiMessages },
+        body: { slug, conversationId, message: text },
       })
 
       if (error) throw new Error(await formatInvokeError(error))
@@ -205,20 +270,40 @@ export default function ChatScreen() {
         sources: data?.sources ?? [],
       }
       setMessages((prev) => [...prev, assistantMsg])
+
+      // Update context pill if new companies were pulled in
+      if (Array.isArray(data?.extraContextSlugs) && data.extraContextSlugs.length > 0) {
+        // Slugs are IDs — display them as capitalised labels until we have names
+        setExtraCompanyNames((prev) => {
+          const next = [...prev]
+          for (const s of data.extraContextSlugs as string[]) {
+            const label = s.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+            if (!next.includes(label)) next.push(label)
+          }
+          return next
+        })
+      }
+
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100)
     } catch (e) {
       const detail = e instanceof Error ? e.message : 'Unknown error'
-      const errMsg: Message = {
-        id: `error-${Date.now()}`,
-        role: 'assistant',
-        content: `Something went wrong: ${detail}. Please try again.`,
-        sources: [],
-      }
-      setMessages((prev) => [...prev, errMsg])
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          content: `Something went wrong: ${detail}. Please try again.`,
+        },
+      ])
     } finally {
       setLoading(false)
     }
-  }, [input, loading, messages, slug, user])
+  }, [input, loading, messages, slug, conversationId, user])
+
+  // Context pill label
+  const contextLabel = extraCompanyNames.length > 0
+    ? `${companyName} + ${extraCompanyNames.join(', ')}`
+    : `${companyName} research`
 
   return (
     <KeyboardAvoidingView
@@ -228,8 +313,8 @@ export default function ChatScreen() {
     >
       {/* Context pill */}
       <View style={[styles.contextPill, { backgroundColor: colors.accentSoft }]}>
-        <Text style={[styles.contextText, { color: colors.accent }]}>
-          Context: {companyName} research
+        <Text style={[styles.contextText, { color: colors.accent }]} numberOfLines={1}>
+          Context: {contextLabel}
         </Text>
       </View>
 
@@ -240,6 +325,16 @@ export default function ChatScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.listContent, { paddingBottom: space.xl }]}
         showsVerticalScrollIndicator={false}
+        onEndReachedThreshold={0}
+        // Scroll-to-top triggers older message load
+        onScrollToIndexFailed={() => {}}
+        ListHeaderComponent={loadingOlder ? <LoadMoreIndicator colors={colors} /> : null}
+        onScroll={({ nativeEvent }) => {
+          if (nativeEvent.contentOffset.y < 80 && hasOlderMessages && !loadingOlder) {
+            void loadOlderMessages()
+          }
+        }}
+        scrollEventThrottle={200}
         renderItem={({ item }) =>
           item.role === 'user' ? (
             <UserBubble msg={item} colors={colors} />
@@ -247,9 +342,7 @@ export default function ChatScreen() {
             <AssistantBubble msg={item} colors={colors} />
           )
         }
-        ListFooterComponent={
-          loading ? <TypingIndicator colors={colors} /> : null
-        }
+        ListFooterComponent={loading ? <TypingIndicator colors={colors} /> : null}
         onContentSizeChange={() => {
           if (loading) listRef.current?.scrollToEnd({ animated: true })
         }}
@@ -268,7 +361,7 @@ export default function ChatScreen() {
       >
         <TextInput
           style={[styles.input, { color: colors.ink, backgroundColor: colors.canvas }]}
-          placeholder={contextLoaded ? 'Ask about the research…' : 'Loading context…'}
+          placeholder={historyReady ? 'Ask about the research…' : 'Loading history…'}
           placeholderTextColor={colors.inkSubtle}
           value={input}
           onChangeText={setInput}
@@ -276,15 +369,12 @@ export default function ChatScreen() {
           returnKeyType="send"
           multiline
           maxLength={500}
-          editable={contextLoaded && !loading}
+          editable={historyReady && !loading}
         />
         <Pressable
           style={[
             styles.sendBtn,
-            {
-              backgroundColor:
-                input.trim() && !loading ? colors.accent : colors.accentSoft,
-            },
+            { backgroundColor: input.trim() && !loading ? colors.accent : colors.accentSoft },
           ]}
           onPress={() => void sendMessage()}
           disabled={!input.trim() || loading}
@@ -295,6 +385,10 @@ export default function ChatScreen() {
     </KeyboardAvoidingView>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -307,6 +401,11 @@ const styles = StyleSheet.create({
   contextText: { fontFamily: font.medium, fontSize: 12 },
 
   listContent: { paddingHorizontal: space.lg, paddingTop: space.md },
+
+  loadMoreRow: {
+    alignItems: 'center',
+    paddingVertical: space.md,
+  },
 
   // User bubble
   userBubbleRow: {
@@ -339,7 +438,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 2,
   },
-  avatarText:  { fontFamily: font.bold, fontSize: 13 },
+  avatarText: { fontFamily: font.bold, fontSize: 13 },
   assistantContent: { flex: 1, minWidth: 0 },
   assistantBubble: {
     borderRadius: radius.lg,
