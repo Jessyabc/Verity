@@ -1,11 +1,5 @@
 /**
- * Saved Links — your personal research library.
- *
- * Organised by company. Inside each company, two sub-sections:
- *   • Company Narrative  — links from official IR / filings
- *   • Media & Analyst    — links from news / analysts
- *
- * Only manually saved items appear here (bookmark icon on each headline).
+ * Saved Links — BRAND styling; company headers use multi-source logos (Clearbit / favicons, not SEC-only).
  */
 
 import { useFocusEffect, useRouter } from 'expo-router'
@@ -19,14 +13,25 @@ import {
   View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { BlurView } from 'expo-blur'
 
+import Ionicons from '@expo/vector-icons/Ionicons'
+import { CompanyLogo } from '@/components/CompanyLogo'
 import { useSidebar } from '@/components/Sidebar'
+import { VerityMark } from '@/components/VerityMark'
 import { useAuth } from '@/contexts/AuthContext'
-import { useVerityPalette } from '@/hooks/useVerityPalette'
-import { fetchAllSavedHeadlines, unsaveHeadline, type SavedHeadlineRow } from '@/lib/savedHeadlines'
-import { openUrl } from '@/lib/openUrl'
-import { formatAgo, formatUnknownError } from '@/lib/format'
+import { BRAND } from '@/constants/brand'
 import { font, radius, space } from '@/constants/theme'
+import { buildCompanyLogoCandidates } from '@/lib/companyLogo'
+import { formatAgo, formatUnknownError } from '@/lib/format'
+import { openUrl } from '@/lib/openUrl'
+import { fetchAllSavedHeadlines, unsaveHeadline, type SavedHeadlineRow } from '@/lib/savedHeadlines'
+import { isSupabaseConfigured, supabase } from '@/lib/supabase'
+import {
+  fetchCompaniesForSlugs,
+  fetchSourceBaseUrlsBySlugs,
+  type WatchlistCompanyRow,
+} from '@/lib/watchlistApi'
 
 type NarrativeGroup = {
   type: 'company' | 'media'
@@ -37,8 +42,9 @@ type NarrativeGroup = {
 type CompanySection = {
   slug: string
   companyName: string
+  ticker: string | null
+  logoCandidates: string[]
   narratives: NarrativeGroup[]
-  // SectionList requires a `data` array — we use the NarrativeGroup as items
   data: NarrativeGroup[]
 }
 
@@ -46,8 +52,11 @@ function slugToName(slug: string): string {
   return slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-function buildSections(rows: SavedHeadlineRow[]): CompanySection[] {
-  // Group by company
+function buildSections(
+  rows: SavedHeadlineRow[],
+  companyBySlug: Map<string, WatchlistCompanyRow>,
+  sourceBySlug: Map<string, string[]>,
+): CompanySection[] {
   const bySlug = new Map<string, SavedHeadlineRow[]>()
   for (const row of rows) {
     const arr = bySlug.get(row.company_slug) ?? []
@@ -57,8 +66,9 @@ function buildSections(rows: SavedHeadlineRow[]): CompanySection[] {
 
   const sections: CompanySection[] = []
   for (const [slug, items] of bySlug.entries()) {
+    const co = companyBySlug.get(slug)
     const companyItems = items.filter((i) => i.narrative_type === 'company')
-    const mediaItems   = items.filter((i) => i.narrative_type !== 'company') // default → media
+    const mediaItems = items.filter((i) => i.narrative_type !== 'company')
 
     const narratives: NarrativeGroup[] = []
     if (companyItems.length > 0) {
@@ -70,7 +80,12 @@ function buildSections(rows: SavedHeadlineRow[]): CompanySection[] {
 
     sections.push({
       slug,
-      companyName: slugToName(slug),
+      companyName: co?.name ?? slugToName(slug),
+      ticker: co?.ticker ?? null,
+      logoCandidates: buildCompanyLogoCandidates({
+        explicit: co?.logo_url,
+        sourceBaseUrls: sourceBySlug.get(slug) ?? [],
+      }),
       narratives,
       data: narratives,
     })
@@ -78,95 +93,91 @@ function buildSections(rows: SavedHeadlineRow[]): CompanySection[] {
   return sections
 }
 
-// ─── Single headline row ─────────────────────────────────────────────────────
-
 function HeadlineRow({
   item,
   onUnsave,
-  colors,
 }: {
   item: SavedHeadlineRow
   onUnsave: (id: string) => void
-  colors: ReturnType<typeof useVerityPalette>
 }) {
   return (
-    <View style={[styles.headlineRow, { borderTopColor: colors.stroke }]}>
+    <View style={[styles.headlineRow, { borderTopColor: BRAND.stroke }]}>
       <Pressable style={styles.headlineBody} onPress={() => void openUrl(item.url)}>
-        <Text style={[styles.headlineTitle, { color: colors.accent }]} numberOfLines={2}>
+        <Text style={[styles.headlineTitle, { color: BRAND.tealLight }]} numberOfLines={2}>
           {item.title}
         </Text>
         {item.snippet ? (
-          <Text style={[styles.headlineSnippet, { color: colors.inkMuted }]} numberOfLines={2}>
+          <Text style={[styles.headlineSnippet, { color: BRAND.onNavyMuted }]} numberOfLines={2}>
             {item.snippet}
           </Text>
         ) : null}
-        <Text style={[styles.headlineMeta, { color: colors.inkSubtle }]} numberOfLines={1}>
+        <Text style={[styles.headlineMeta, { color: BRAND.onNavySubtle }]} numberOfLines={1}>
           {item.source ?? item.url}
           {item.saved_at ? ` · ${formatAgo(item.saved_at)}` : ''}
         </Text>
       </Pressable>
-      <Pressable
-        style={styles.unsaveBtn}
-        onPress={() => onUnsave(item.id)}
-        hitSlop={10}
-      >
-        <Text style={[styles.unsaveIcon, { color: colors.accent }]}>✦</Text>
+      <Pressable style={styles.unsaveBtn} onPress={() => onUnsave(item.id)} hitSlop={10}>
+        <Text style={[styles.unsaveIcon, { color: BRAND.tealLight }]}>✦</Text>
       </Pressable>
     </View>
   )
 }
 
-// ─── Narrative sub-section ───────────────────────────────────────────────────
-
 function NarrativeBlock({
   group,
   onUnsave,
-  colors,
 }: {
   group: NarrativeGroup
   onUnsave: (id: string) => void
-  colors: ReturnType<typeof useVerityPalette>
 }) {
-  const dotColor = group.type === 'company' ? '#0f766e' : '#475569'
+  const dotColor = group.type === 'company' ? BRAND.tealDark : BRAND.tealLight
   return (
     <View style={styles.narrativeBlock}>
       <View style={styles.narrativeHeader}>
         <View style={[styles.narrativeDot, { backgroundColor: dotColor }]} />
-        <Text style={[styles.narrativeLabel, { color: colors.inkSubtle }]}>
+        <Text style={[styles.narrativeLabel, { color: BRAND.onNavySubtle }]}>
           {group.label.toUpperCase()}
         </Text>
       </View>
       {group.items.map((item) => (
-        <HeadlineRow
-          key={item.id}
-          item={item}
-          onUnsave={onUnsave}
-          colors={colors}
-        />
+        <HeadlineRow key={item.id} item={item} onUnsave={onUnsave} />
       ))}
     </View>
   )
 }
 
-// ─── Main screen ──────────────────────────────────────────────────────────────
-
 export default function SavedScreen() {
-  const router   = useRouter()
-  const insets   = useSafeAreaInsets()
-  const colors   = useVerityPalette()
+  const router = useRouter()
+  const insets = useSafeAreaInsets()
   const { user } = useAuth()
   const { open: openSidebar } = useSidebar()
 
   const [sections, setSections] = useState<CompanySection[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    if (!user) { setSections([]); setLoading(false); return }
-    setLoading(true); setError(null)
+    if (!user) {
+      setSections([])
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setError(null)
     try {
       const rows = await fetchAllSavedHeadlines()
-      setSections(buildSections(rows))
+      const slugs = [...new Set(rows.map((r) => r.company_slug))]
+      let companyBySlug = new Map<string, WatchlistCompanyRow>()
+      let sourceBySlug = new Map<string, string[]>()
+      if (isSupabaseConfigured() && slugs.length > 0) {
+        const [cos, src] = await Promise.all([
+          fetchCompaniesForSlugs(supabase, slugs),
+          fetchSourceBaseUrlsBySlugs(supabase, slugs),
+        ])
+        companyBySlug = new Map(cos.map((c) => [c.slug, c]))
+        sourceBySlug = src
+      }
+      setSections(buildSections(rows, companyBySlug, sourceBySlug))
     } catch (e) {
       setError(formatUnknownError(e))
     } finally {
@@ -174,7 +185,9 @@ export default function SavedScreen() {
     }
   }, [user])
 
-  useFocusEffect(useCallback(() => { void load() }, [load]))
+  useFocusEffect(useCallback(() => {
+    void load()
+  }, [load]))
 
   const handleUnsave = async (id: string) => {
     try {
@@ -193,48 +206,46 @@ export default function SavedScreen() {
           .filter((s) => s.data.length > 0),
       )
     } catch {
-      // silent
+      /* silent */
     }
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
-      {/* Header */}
+    <View style={[styles.screen, { backgroundColor: BRAND.navy }]}>
       <View
         style={[
           styles.header,
-          { paddingTop: insets.top + space.md, borderBottomColor: colors.stroke },
+          { paddingTop: insets.top + space.md, borderBottomColor: BRAND.stroke },
         ]}
       >
-        <Pressable style={styles.menuBtn} onPress={openSidebar} hitSlop={10}>
-          <View style={styles.hamburger}>
-            <View style={[styles.hLine, { backgroundColor: colors.ink }]} />
-            <View style={[styles.hLine, { backgroundColor: colors.ink }]} />
-            <View style={[styles.hLine, { backgroundColor: colors.ink, width: 15 }]} />
-          </View>
+        <Pressable style={styles.menuBtn} onPress={openSidebar} hitSlop={10} accessibilityLabel="Open menu">
+          <Ionicons name="menu-outline" size={26} color={BRAND.tealLight} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.ink }]}>Saved Links</Text>
-        <View style={{ width: 40 }} />
+        <VerityMark size={28} />
+        <Text style={[styles.headerTitle, { color: BRAND.onNavy }]}>Saved Links</Text>
+        <View style={{ width: 8 }} />
       </View>
 
       {error ? (
-        <Text style={[styles.err, { color: colors.danger }]}>{error}</Text>
+        <View style={[styles.errBanner, { backgroundColor: 'rgba(185, 28, 28, 0.25)' }]}>
+          <Text style={[styles.err, { color: BRAND.onNavy }]}>{error}</Text>
+        </View>
       ) : null}
 
       {loading ? (
-        <ActivityIndicator color={colors.accent} style={{ marginTop: space.xl }} />
+        <ActivityIndicator color={BRAND.tealLight} size="large" style={{ marginTop: space.xl }} />
       ) : sections.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={[styles.emptyTitle, { color: colors.ink }]}>No saved links yet</Text>
-          <Text style={[styles.emptyBody, { color: colors.inkMuted }]}>
-            Open a company profile, run research, and tap ✧ on any headline to save it here.
-            Links are grouped by company and narrative type.
+          <Text style={[styles.emptyTitle, { color: BRAND.onNavy }]}>No saved links yet</Text>
+          <Text style={[styles.emptyBody, { color: BRAND.onNavyMuted }]}>
+            Open a company profile, run research, and tap ✧ on any headline to save it here. Links are grouped by
+            company and narrative type.
           </Text>
         </View>
       ) : (
         <SectionList
           sections={sections}
-          keyExtractor={(group) => `${group.type}`}
+          keyExtractor={(group) => `${group.type}-${group.items[0]?.id ?? group.label}`}
           stickySectionHeadersEnabled={false}
           contentContainerStyle={{
             paddingHorizontal: space.lg,
@@ -246,25 +257,32 @@ export default function SavedScreen() {
               style={styles.sectionHeader}
               onPress={() => router.push(`/company/${section.slug}`)}
             >
-              <Text style={[styles.sectionTitle, { color: colors.ink }]}>
-                {section.companyName}
-              </Text>
-              <Text style={[styles.sectionArrow, { color: colors.accent }]}>→</Text>
+              <CompanyLogo
+                name={section.companyName}
+                ticker={section.ticker}
+                logoCandidates={section.logoCandidates}
+                size="sm"
+                tone="brand"
+              />
+              <View style={styles.sectionHeaderText}>
+                <Text style={[styles.sectionTitle, { color: BRAND.onNavy }]} numberOfLines={1}>
+                  {section.companyName}
+                </Text>
+                {section.ticker ? (
+                  <Text style={[styles.sectionTicker, { color: BRAND.onNavyMuted }]} numberOfLines={1}>
+                    {section.ticker}
+                  </Text>
+                ) : null}
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={BRAND.tealLight} />
             </Pressable>
           )}
           renderItem={({ item: group }) => (
-            <View
-              style={[
-                styles.card,
-                { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke },
-              ]}
-            >
-              <NarrativeBlock
-                group={group}
-                onUnsave={handleUnsave}
-                colors={colors}
-              />
-            </View>
+            <BlurView intensity={40} tint="dark" style={styles.cardBlur}>
+              <View style={[styles.cardInner, { backgroundColor: BRAND.glassNavy }]}>
+                <NarrativeBlock group={group} onUnsave={handleUnsave} />
+              </View>
+            </BlurView>
           )}
           SectionSeparatorComponent={() => <View style={{ height: space.md }} />}
           ItemSeparatorComponent={() => <View style={{ height: space.sm }} />}
@@ -274,8 +292,6 @@ export default function SavedScreen() {
   )
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   header: {
@@ -284,32 +300,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
     paddingBottom: space.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: space.md,
+    gap: space.sm,
   },
-  menuBtn:     { padding: 4 },
-  hamburger:   { gap: 5 },
-  hLine:       { height: 1.5, borderRadius: 1 },
+  menuBtn: { padding: 4, marginRight: 2 },
   headerTitle: { flex: 1, fontFamily: font.semi, fontSize: 18, letterSpacing: -0.3 },
-  err:         { fontFamily: font.regular, fontSize: 14, marginHorizontal: space.lg, marginTop: space.sm },
+  errBanner: {
+    marginHorizontal: space.lg,
+    marginTop: space.sm,
+    padding: space.md,
+    borderRadius: radius.sm,
+  },
+  err: { fontFamily: font.regular, fontSize: 14 },
 
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: space.sm,
-    marginBottom: space.xs,
-    marginTop: space.md,
+    gap: space.md,
+    paddingVertical: space.md,
+    marginTop: space.sm,
   },
-  sectionTitle: { fontFamily: font.semi, fontSize: 16, letterSpacing: -0.2 },
-  sectionArrow: { fontFamily: font.regular, fontSize: 14 },
+  sectionHeaderText: { flex: 1, minWidth: 0 },
+  sectionTitle: { fontFamily: font.semi, fontSize: 17, letterSpacing: -0.2 },
+  sectionTicker: { fontFamily: font.medium, fontSize: 12, marginTop: 2 },
 
-  card: {
+  cardBlur: {
     borderRadius: radius.lg,
-    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  cardInner: {
+    borderRadius: radius.lg,
     overflow: 'hidden',
   },
 
-  narrativeBlock:  { paddingBottom: space.xs },
+  narrativeBlock: { paddingBottom: space.xs },
   narrativeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -318,8 +341,8 @@ const styles = StyleSheet.create({
     paddingTop: space.md,
     paddingBottom: space.xs,
   },
-  narrativeDot:  { width: 6, height: 6, borderRadius: 3 },
-  narrativeLabel:{ fontFamily: font.medium, fontSize: 10, letterSpacing: 1.4 },
+  narrativeDot: { width: 6, height: 6, borderRadius: 3 },
+  narrativeLabel: { fontFamily: font.medium, fontSize: 10, letterSpacing: 1.4 },
 
   headlineRow: {
     flexDirection: 'row',
@@ -328,12 +351,12 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     gap: space.sm,
   },
-  headlineBody:    { flex: 1, minWidth: 0 },
-  headlineTitle:   { fontFamily: font.semi, fontSize: 14, lineHeight: 20 },
+  headlineBody: { flex: 1, minWidth: 0 },
+  headlineTitle: { fontFamily: font.semi, fontSize: 14, lineHeight: 20 },
   headlineSnippet: { fontFamily: font.regular, fontSize: 13, lineHeight: 18, marginTop: 3 },
-  headlineMeta:    { fontFamily: font.regular, fontSize: 11, marginTop: space.xs },
-  unsaveBtn:       { paddingTop: 2 },
-  unsaveIcon:      { fontSize: 16 },
+  headlineMeta: { fontFamily: font.regular, fontSize: 11, marginTop: space.xs },
+  unsaveBtn: { paddingTop: 2 },
+  unsaveIcon: { fontSize: 16 },
 
   empty: {
     flex: 1,

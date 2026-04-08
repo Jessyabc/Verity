@@ -10,7 +10,28 @@ export type ResearchNewsItem = {
   narrative_scope?: 'company' | 'media'
 }
 
-export type FactualGap = { text: string } | string
+/** Stored in JSONB; strings are legacy. Category is optional metadata for UI chips. */
+export type FactualGapCategory =
+  | 'numeric'
+  | 'disclosure'
+  | 'timing'
+  | 'definition'
+  | 'coverage'
+  | string
+
+export type FactualGap =
+  | string
+  | { text: string; category?: FactualGapCategory }
+
+export function factualGapText(g: FactualGap): string {
+  return typeof g === 'string' ? g : g.text ?? ''
+}
+
+export function factualGapCategory(g: FactualGap): string | undefined {
+  if (typeof g === 'string') return undefined
+  const c = g.category
+  return typeof c === 'string' && c.trim() ? c.trim() : undefined
+}
 
 export type CompanyResearchRow = {
   slug: string

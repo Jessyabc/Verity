@@ -8,16 +8,19 @@ import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import {
   ActivityIndicator,
+  LayoutAnimation,
   Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
+  UIManager,
   View,
 } from 'react-native'
 import { ScrollView } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BlurView } from 'expo-blur'
+import * as Haptics from 'expo-haptics'
 import { LinearGradient } from 'expo-linear-gradient'
 
 import Ionicons from '@expo/vector-icons/Ionicons'
@@ -36,8 +39,11 @@ import {
   insertWatchlistSlug,
 } from '@/lib/watchlistApi'
 import {
+  factualGapCategory,
+  factualGapText,
   fetchResearchCacheRow,
   type CompanyResearchRow,
+  type FactualGap,
   type ResearchNewsItem,
 } from '@/lib/researchCache'
 import { invokeResearchCompany } from '@/lib/researchRefresh'
@@ -50,7 +56,7 @@ import {
 } from '@/lib/savedHeadlines'
 import { openUrl } from '@/lib/openUrl'
 import { useMarketData } from '@/hooks/useMarketData'
-import { formatMarketCap, changeColor } from '@/lib/finnhub'
+import { formatMarketCap } from '@/lib/finnhub'
 import { supabase } from '@/lib/supabase'
 
 function safeHostname(url: string): string {
@@ -61,10 +67,21 @@ function safeHostname(url: string): string {
   }
 }
 
-type FactualGap = { text: string } | string
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true)
+}
 
-function gapLine(gap: FactualGap): string {
-  return typeof gap === 'string' ? gap : gap.text ?? ''
+const GAP_CATEGORY_LABEL: Record<string, string> = {
+  numeric: 'Numeric',
+  disclosure: 'Disclosure',
+  timing: 'Timing',
+  definition: 'Definition',
+  coverage: 'Coverage',
+}
+
+function gapCategoryLabel(category: string | undefined): string | null {
+  if (!category) return null
+  return GAP_CATEGORY_LABEL[category] ?? category.charAt(0).toUpperCase() + category.slice(1)
 }
 
 function SourceLinkRow({
@@ -84,7 +101,11 @@ function SourceLinkRow({
   const savedRow = savedRows.find((r) => r.url === item.url)
   return (
     <Pressable
-      style={[styles.sourceRow, { borderTopColor: BRAND.stroke }]}
+      style={({ pressed }) => [
+        styles.sourceRow,
+        { borderTopColor: BRAND.stroke },
+        { opacity: pressed ? 0.92 : 1 },
+      ]}
       onPress={() => void openUrl(item.url)}
     >
       <View style={styles.sourceBody}>
@@ -118,24 +139,48 @@ function GlassChrome({ children }: { children: ReactNode }) {
 }
 
 function FactualGapsHero({ gaps }: { gaps: FactualGap[] }) {
+  const slice = gaps.slice(0, 5)
+  const thinCoverage = slice.length > 0 && slice.length < 3
   return (
     <GlassChrome>
       <View style={[styles.heroPad, { backgroundColor: BRAND.glassNavy }]}>
         <View style={styles.gapsTitleRow}>
           <View style={[styles.tealDot, { backgroundColor: BRAND.tealDark }]} />
-          <Text style={styles.gapsTitle}>BIGGEST FACTUAL GAPS THIS QUARTER</Text>
+          <Text style={styles.gapsTitle}>FACTUAL GAPS (THIS QUARTER)</Text>
         </View>
-        {gaps.length > 0 ? (
+        {slice.length > 0 ? (
           <>
-            {gaps.slice(0, 5).map((gap, i) => (
-              <View key={i} style={styles.gapRow}>
-                <Text style={[styles.gapBullet, { color: BRAND.tealLight }]}>•</Text>
-                <Text style={[styles.gapText, { color: BRAND.onNavy }]}>{gapLine(gap)}</Text>
-              </View>
-            ))}
+            {slice.map((gap, i) => {
+              const label = gapCategoryLabel(factualGapCategory(gap))
+              const num = String(i + 1).padStart(2, '0')
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.gapBlock,
+                    i < slice.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BRAND.stroke },
+                  ]}
+                >
+                  <View style={styles.gapBlockHeader}>
+                    <Text style={[styles.gapIndex, { color: BRAND.tealLight }]}>{num}</Text>
+                    {label ? (
+                      <View style={[styles.gapCategoryChip, { borderColor: BRAND.stroke }]}>
+                        <Text style={[styles.gapCategoryChipText, { color: BRAND.onNavySubtle }]}>{label}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.gapText, { color: BRAND.onNavy }]}>{factualGapText(gap)}</Text>
+                </View>
+              )
+            })}
             <Text style={[styles.gapsFooter, { color: BRAND.onNavySubtle }]}>
               Objective mismatches only · no interpretation
             </Text>
+            {thinCoverage ? (
+              <Text style={[styles.gapsFooterThin, { color: BRAND.onNavySubtle }]}>
+                Limited independent coverage—gaps may reflect disclosure depth rather than disagreement.
+              </Text>
+            ) : null}
           </>
         ) : (
           <Text style={[styles.placeholderText, { color: BRAND.onNavyMuted }]}>
@@ -149,6 +194,7 @@ function FactualGapsHero({ gaps }: { gaps: FactualGap[] }) {
 
 function NarrativeCard({
   title,
+  subtitle,
   badge,
   glass,
   bodyText,
@@ -161,6 +207,7 @@ function NarrativeCard({
   onSaveToggle,
 }: {
   title: string
+  subtitle: string
   badge: string
   glass: 'navy' | 'teal'
   bodyText: string | null
@@ -174,26 +221,13 @@ function NarrativeCard({
 }) {
   const [open, setOpen] = useState(false)
 
-  const inner = (
-    <View
-      style={[
-        styles.narrativeInner,
-        glass === 'navy'
-          ? { backgroundColor: BRAND.glassNavy }
-          : { backgroundColor: 'rgba(10, 37, 64, 0.55)' },
-      ]}
-    >
-      <View style={styles.titleRow}>
-        {glass === 'navy' ? (
-          <View style={styles.narrTitleLead}>
-            <VerityMark size={24} />
-          </View>
-        ) : null}
-        <Text style={[styles.narrTitle, { color: BRAND.onNavy }]}>{title}</Text>
-        <View style={[styles.badge, { borderColor: BRAND.tealDark }]}>
-          <Text style={[styles.badgeText, { color: BRAND.tealLight }]}>{badge}</Text>
-        </View>
-      </View>
+  const toggleSources = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+    setOpen((v) => !v)
+  }
+
+  const bodyBlock = (
+    <>
       {bodyText?.trim() ? (
         <Text style={[styles.narrBody, { color: BRAND.onNavy }]}>{bodyText.trim()}</Text>
       ) : (
@@ -202,7 +236,10 @@ function NarrativeCard({
 
       {sourceItems.length > 0 ? (
         <View style={styles.sourcesWrap}>
-          <Pressable style={styles.sourcesToggle} onPress={() => setOpen((v) => !v)}>
+          <Pressable
+            style={({ pressed }) => [styles.sourcesToggle, { opacity: pressed ? 0.85 : 1 }]}
+            onPress={toggleSources}
+          >
             <Text style={[styles.sourcesLabel, { color: BRAND.onNavySubtle }]}>{sourcesLabel}</Text>
             <Text style={[styles.sourcesToggleText, { color: BRAND.tealLight }]}>
               {open ? 'Hide' : 'Show'} ({sourceItems.length})
@@ -222,6 +259,55 @@ function NarrativeCard({
             : null}
         </View>
       ) : null}
+    </>
+  )
+
+  const inner = (
+    <View style={styles.narrativeRow}>
+      {glass === 'navy' ? (
+        <View style={[styles.narrativeAccent, { backgroundColor: BRAND.tealDark }]} />
+      ) : (
+        <LinearGradient
+          colors={[BRAND.tealDark, BRAND.tealLight]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.narrativeAccent}
+        />
+      )}
+      {glass === 'navy' ? (
+        <View style={[styles.narrativeMain, styles.narrativeMainCompany]}>
+          <View style={styles.titleRow}>
+            <View style={styles.narrTitleLead}>
+              <VerityMark size={24} />
+              <Ionicons name="business-outline" size={20} color={BRAND.tealLight} style={styles.narrLeadIcon} />
+            </View>
+            <Text style={[styles.narrTitle, { color: BRAND.onNavy }]}>{title}</Text>
+            <View style={[styles.badge, { borderColor: BRAND.tealDark }]}>
+              <Text style={[styles.badgeText, { color: BRAND.tealLight }]}>{badge}</Text>
+            </View>
+          </View>
+          <Text style={[styles.narrSubtitle, { color: BRAND.onNavySubtle }]}>{subtitle}</Text>
+          {bodyBlock}
+        </View>
+      ) : (
+        <View style={styles.narrativeMainMediaOuter}>
+          <View style={[StyleSheet.absoluteFillObject, styles.narrativeMainMediaBase]} />
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: BRAND.glassTealWash }]} />
+          <View style={styles.narrativeMain}>
+            <View style={styles.titleRow}>
+              <View style={styles.narrTitleLead}>
+                <Ionicons name="newspaper-outline" size={22} color={BRAND.tealLight} style={styles.narrLeadIcon} />
+              </View>
+              <Text style={[styles.narrTitle, { color: BRAND.onNavy }]}>{title}</Text>
+              <View style={[styles.badge, { borderColor: BRAND.tealDark }]}>
+                <Text style={[styles.badgeText, { color: BRAND.tealLight }]}>{badge}</Text>
+              </View>
+            </View>
+            <Text style={[styles.narrSubtitle, { color: BRAND.onNavySubtle }]}>{subtitle}</Text>
+            {bodyBlock}
+          </View>
+        </View>
+      )}
     </View>
   )
 
@@ -247,6 +333,43 @@ function NarrativeCard({
   )
 }
 
+type MarketStripProps = {
+  price: number
+  changePct: number
+  marketCap: number | null
+  peRatio: number | null
+}
+
+function MarketGlassStrip({ price, changePct, marketCap, peRatio }: MarketStripProps) {
+  const changeStr = `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`
+  return (
+    <GlassChrome>
+      <View style={[styles.marketGlassInner, { backgroundColor: BRAND.glassNavy }]}>
+        <View style={styles.marketCol}>
+          <Text style={[styles.marketLabel, { color: BRAND.onNavySubtle }]}>LAST</Text>
+          <Text style={[styles.marketPrice, { color: BRAND.onNavy }]}>${price.toFixed(2)}</Text>
+        </View>
+        <View style={styles.marketCol}>
+          <Text style={[styles.marketLabel, { color: BRAND.onNavySubtle }]}>DAY</Text>
+          <Text style={[styles.marketChange, { color: BRAND.onNavy }]}>{changeStr}</Text>
+        </View>
+        {marketCap ? (
+          <View style={styles.marketCol}>
+            <Text style={[styles.marketLabel, { color: BRAND.onNavySubtle }]}>MKT CAP</Text>
+            <Text style={[styles.marketStat, { color: BRAND.onNavy }]}>{formatMarketCap(marketCap)}</Text>
+          </View>
+        ) : null}
+        {peRatio ? (
+          <View style={styles.marketCol}>
+            <Text style={[styles.marketLabel, { color: BRAND.onNavySubtle }]}>P/E</Text>
+            <Text style={[styles.marketStat, { color: BRAND.onNavy }]}>{peRatio.toFixed(1)}</Text>
+          </View>
+        ) : null}
+      </View>
+    </GlassChrome>
+  )
+}
+
 export default function CompanyScreen() {
   const { slug: slugParam } = useLocalSearchParams<{ slug: string }>()
   const slug = typeof slugParam === 'string' ? slugParam : slugParam?.[0] ?? ''
@@ -257,7 +380,6 @@ export default function CompanyScreen() {
   const { user } = useAuth()
 
   const [company, setCompany] = useState<CompanyRow | null>(null)
-  const [, setLogoFallbackBaseUrl] = useState<string | null>(null)
   const { data: marketData } = useMarketData(company?.ticker)
   const [research, setResearch] = useState<CompanyResearchRow | null>(null)
   const [savedRows, setSavedRows] = useState<SavedHeadlineRow[]>([])
@@ -282,7 +404,6 @@ export default function CompanyScreen() {
         user ? fetchWatchlistSlugs(supabase) : Promise.resolve([] as string[]),
       ])
       setCompany(bundle.company)
-      setLogoFallbackBaseUrl(bundle.logoFallbackBaseUrl)
       setResearch(r)
       setOnWatchlist(wl.includes(slug))
       if (user) {
@@ -375,6 +496,7 @@ export default function CompanyScreen() {
     try {
       await invokeResearchCompany(company.slug, company.name, company.ticker)
       setResearch(await fetchResearchCacheRow(company.slug))
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
     } catch (e) {
       setError(formatUnknownError(e))
     } finally {
@@ -426,7 +548,13 @@ export default function CompanyScreen() {
         <Text style={{ color: BRAND.onNavyMuted, marginTop: space.md, textAlign: 'center' }}>
           {"This company isn't in the database yet."}
         </Text>
-        <Pressable style={[styles.backBtn, { backgroundColor: BRAND.tealDark }]} onPress={() => router.back()}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.backBtn,
+            { backgroundColor: BRAND.tealDark, opacity: pressed ? 0.92 : 1 },
+          ]}
+          onPress={() => router.back()}
+        >
           <Text style={styles.backBtnText}>Go back</Text>
         </Pressable>
       </View>
@@ -466,8 +594,11 @@ export default function CompanyScreen() {
         showsVerticalScrollIndicator={false}
       >
         {error ? (
-          <View style={[styles.banner, { backgroundColor: 'rgba(185, 28, 28, 0.25)' }]}>
-            <Text style={{ color: BRAND.onNavy }}>{error}</Text>
+          <View style={[styles.banner, { backgroundColor: 'rgba(185, 28, 28, 0.22)' }]}>
+            <Text style={[styles.bannerTitle, { color: BRAND.onNavy }]}>Something went wrong</Text>
+            <Text style={[styles.bannerBody, { color: BRAND.onNavyMuted }]}>
+              Pull to refresh or try again. {error}
+            </Text>
           </View>
         ) : null}
 
@@ -480,9 +611,12 @@ export default function CompanyScreen() {
             {formatResearchUpdated(research?.fetched_at)}
           </Text>
           <Pressable
-            style={[
+            style={({ pressed }) => [
               styles.refreshBtn,
-              { backgroundColor: researchBusy ? BRAND.tealDark : BRAND.tealDark, opacity: researchBusy ? 0.75 : 1 },
+              {
+                backgroundColor: BRAND.tealDark,
+                opacity: researchBusy ? 0.75 : pressed ? 0.92 : 1,
+              },
             ]}
             onPress={() => void runResearch()}
             disabled={researchBusy}
@@ -496,52 +630,31 @@ export default function CompanyScreen() {
         </View>
 
         {marketData ? (
-          <View style={styles.marketRow}>
-            <Text style={[styles.price, { color: BRAND.onNavy }]}>
-              ${marketData.price.toFixed(2)}
-            </Text>
-            <Text
-              style={[
-                styles.change,
-                {
-                  color: changeColor(
-                    marketData.changePct,
-                    BRAND.tealLight,
-                    '#f87171',
-                    BRAND.onNavySubtle,
-                  ),
-                },
-              ]}
-            >
-              {marketData.changePct >= 0 ? '+' : ''}
-              {marketData.changePct.toFixed(2)}%
-            </Text>
-            {marketData.marketCap ? (
-              <Text style={[styles.marketMeta, { color: BRAND.onNavySubtle }]}>
-                {formatMarketCap(marketData.marketCap)}
-              </Text>
-            ) : null}
-            {marketData.peRatio ? (
-              <Text style={[styles.marketMeta, { color: BRAND.onNavySubtle }]}>
-                P/E {marketData.peRatio.toFixed(1)}
-              </Text>
-            ) : null}
+          <View style={styles.marketSection}>
+            <MarketGlassStrip
+              price={marketData.price}
+              changePct={marketData.changePct}
+              marketCap={marketData.marketCap}
+              peRatio={marketData.peRatio}
+            />
+            <View style={[styles.researchDivider, { backgroundColor: BRAND.stroke }]} />
           </View>
         ) : null}
 
         {/* 3 — Factual gaps (hero) */}
-        <View style={styles.sectionGap}>
+        <View style={styles.gapsSectionWrap}>
           <FactualGapsHero gaps={factualGaps} />
         </View>
 
         {/* 4 — Company narrative */}
-        <View style={styles.sectionGap}>
+        <View style={styles.narrSectionSpacing}>
           <NarrativeCard
             title="Company Narrative"
+            subtitle="From IR, filings, and earnings materials"
             badge="Official IR & Filings"
             glass="navy"
             bodyText={research?.company_narrative ?? null}
-            placeholder="Refresh research to generate a neutral summary from official IR and SEC filings only."
+            placeholder="Run refresh for a neutral summary drawn only from official IR and SEC filings."
             sourceItems={companyItems}
             sourcesLabel="Company IR / Official"
             savedUrls={savedUrls}
@@ -552,13 +665,14 @@ export default function CompanyScreen() {
         </View>
 
         {/* 5 — Media & analyst narrative */}
-        <View style={styles.sectionGap}>
+        <View style={styles.narrSectionSpacing}>
           <NarrativeCard
             title="Media & Analyst Narrative"
+            subtitle="From third-party news and analyst coverage"
             badge="Independent Sources"
             glass="teal"
             bodyText={research?.media_narrative ?? null}
-            placeholder="Refresh research to generate a neutral summary from independent third-party sources only."
+            placeholder="Run refresh for a neutral summary drawn only from independent third-party sources."
             sourceItems={mediaItems}
             sourcesLabel="Media & Analyst"
             savedUrls={savedUrls}
@@ -570,7 +684,13 @@ export default function CompanyScreen() {
 
         {/* 6 — Discuss */}
         <Pressable
-          style={[styles.discussBtn, { backgroundColor: BRAND.tealDark }]}
+          style={({ pressed }) => [
+            styles.discussBtn,
+            {
+              backgroundColor: BRAND.tealDark,
+              opacity: researchBusy ? 0.75 : pressed ? 0.94 : 1,
+            },
+          ]}
           onPress={() => {
             if (hasResearch) router.push(`/chat/${slug}`)
             else void runResearch()
@@ -578,12 +698,13 @@ export default function CompanyScreen() {
           disabled={researchBusy}
         >
           <Text style={styles.discussBtnText}>
-            {hasResearch ? 'Discuss this research with Verity' : 'Run research to unlock discussion'}
+            {hasResearch ? 'Continue in chat with Verity' : 'Run research to open chat'}
           </Text>
         </Pressable>
 
         <Text style={[styles.disclaimer, { color: BRAND.onNavySubtle }]}>
-          Not investment advice · AI may be incomplete · always verify with primary sources
+          Not investment advice · Compare official and independent narratives above · AI may be incomplete · verify with
+          primary sources
         </Text>
       </ScrollView>
 
@@ -616,18 +737,24 @@ const styles = StyleSheet.create({
   },
   refreshBtnLabel: { fontFamily: font.semi, fontSize: 15, color: BRAND.onNavy },
 
-  marketRow: {
+  marketSection: { marginTop: space.sm },
+  researchDivider: { height: StyleSheet.hairlineWidth, marginTop: space.lg },
+  marketGlassInner: {
     flexDirection: 'row',
-    alignItems: 'center',
     flexWrap: 'wrap',
-    gap: space.sm,
-    marginTop: space.xs,
+    alignItems: 'flex-end',
+    gap: space.md,
+    padding: space.md,
+    borderRadius: radius.lg,
   },
-  price: { fontFamily: font.semi, fontSize: 16 },
-  change: { fontFamily: font.medium, fontSize: 14 },
-  marketMeta: { fontFamily: font.regular, fontSize: 12 },
+  marketCol: { minWidth: 56 },
+  marketLabel: { fontFamily: font.medium, fontSize: 10, letterSpacing: 0.6, marginBottom: 2 },
+  marketPrice: { fontFamily: font.semi, fontSize: 17, fontVariant: ['tabular-nums'] },
+  marketChange: { fontFamily: font.medium, fontSize: 15, fontVariant: ['tabular-nums'] },
+  marketStat: { fontFamily: font.regular, fontSize: 14, fontVariant: ['tabular-nums'] },
 
-  sectionGap: { marginTop: space.xs },
+  gapsSectionWrap: { marginTop: space.xl },
+  narrSectionSpacing: { marginTop: space.lg },
 
   glassBlurOuter: { borderRadius: radius.lg, overflow: 'hidden' },
   glassChromeInner: { borderRadius: radius.lg, overflow: 'hidden' },
@@ -644,16 +771,37 @@ const styles = StyleSheet.create({
     color: BRAND.tealLight,
     flex: 1,
   },
-  gapRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, marginBottom: space.sm },
-  gapBullet: { fontFamily: font.semi, fontSize: 15, lineHeight: 22, marginTop: 1 },
-  gapText: { flex: 1, fontFamily: font.regular, fontSize: 15, lineHeight: 22 },
-  gapsFooter: { fontFamily: font.regular, fontSize: 11, marginTop: space.sm },
+  gapBlock: { paddingVertical: space.sm },
+  gapBlockHeader: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.xs },
+  gapIndex: { fontFamily: font.semi, fontSize: 13, letterSpacing: 0.5, minWidth: 28 },
+  gapCategoryChip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: 2,
+  },
+  gapCategoryChipText: { fontFamily: font.medium, fontSize: 10, letterSpacing: 0.3 },
+  gapText: { fontFamily: font.regular, fontSize: 15, lineHeight: 22 },
+  gapsFooter: { fontFamily: font.regular, fontSize: 11, marginTop: space.md },
+  gapsFooterThin: { fontFamily: font.regular, fontSize: 11, marginTop: space.sm, lineHeight: 16 },
   placeholderText: { fontFamily: font.regular, fontSize: 15, lineHeight: 22 },
 
-  narrativeInner: { padding: space.lg, borderRadius: radius.lg },
+  narrativeRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+  },
+  narrativeAccent: { width: 4, alignSelf: 'stretch' },
+  narrativeMain: { flex: 1, minWidth: 0, padding: space.lg },
+  narrativeMainCompany: { backgroundColor: 'rgba(6, 26, 45, 0.92)' },
+  narrativeMainMediaOuter: { flex: 1, minWidth: 0, position: 'relative' },
+  narrativeMainMediaBase: { backgroundColor: 'rgba(10, 37, 64, 0.82)' },
   titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm },
-  narrTitleLead: { marginRight: 2 },
+  narrTitleLead: { flexDirection: 'row', alignItems: 'center', marginRight: 2 },
+  narrLeadIcon: { marginLeft: 6, opacity: 0.92 },
   narrTitle: { fontFamily: font.semi, fontSize: 17, flex: 1, minWidth: 0 },
+  narrSubtitle: { fontFamily: font.regular, fontSize: 12, lineHeight: 17, marginTop: space.xs },
   badge: {
     borderWidth: 1,
     borderRadius: radius.sm,
@@ -714,4 +862,6 @@ const styles = StyleSheet.create({
   },
   backBtnText: { fontFamily: font.semi, color: BRAND.onNavy, fontSize: 15 },
   banner: { padding: space.md, borderRadius: radius.sm, marginBottom: space.sm },
+  bannerTitle: { fontFamily: font.semi, fontSize: 15, marginBottom: space.xs },
+  bannerBody: { fontFamily: font.regular, fontSize: 13, lineHeight: 18 },
 })

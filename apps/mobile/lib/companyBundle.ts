@@ -6,21 +6,21 @@ import { supabase } from '@/lib/supabase'
 export async function fetchCompanyBundleBySlug(slug: string): Promise<{
   company: CompanyRow | null
   documents: DbTrackedDocument[]
-  /** First IR base_url for favicon fallback when logo_url is null */
-  logoFallbackBaseUrl: string | null
+  /** IR / filing base URLs for logo fallbacks (Clearbit + favicons; skips SEC-first bias). */
+  logoFallbackBaseUrls: string[]
 }> {
   const company = await fetchCompanyBySlug(slug)
-  if (!company) return { company: null, documents: [], logoFallbackBaseUrl: null }
+  if (!company) return { company: null, documents: [], logoFallbackBaseUrls: [] }
   const [documents, sourceRes] = await Promise.all([
     fetchTrackedDocumentsForCompany(company.id, 25),
     supabase
       .from('company_sources')
       .select('base_url')
       .eq('company_id', company.id)
-      .order('source_key')
-      .limit(1)
-      .maybeSingle(),
+      .order('source_key', { ascending: true }),
   ])
-  const logoFallbackBaseUrl = sourceRes.error ? null : (sourceRes.data?.base_url ?? null)
-  return { company, documents, logoFallbackBaseUrl }
+  const logoFallbackBaseUrls = sourceRes.error
+    ? []
+    : ((sourceRes.data ?? []) as { base_url: string }[]).map((r) => r.base_url)
+  return { company, documents, logoFallbackBaseUrls }
 }

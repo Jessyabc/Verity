@@ -89,7 +89,7 @@ function AuthAwareStack() {
         <Stack.Screen
           name="profile"
           options={{
-            title: 'Profile',
+            title: 'Account',
             headerBackTitle: 'Back',
             ...stackScreenGesture,
           }}
