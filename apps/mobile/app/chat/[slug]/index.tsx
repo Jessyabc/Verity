@@ -5,15 +5,18 @@
  */
 
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
+import * as Haptics from 'expo-haptics'
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native'
+import { Swipeable } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useAuth } from '@/contexts/AuthContext'
@@ -21,6 +24,7 @@ import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { font, radius, space } from '@/constants/theme'
 import {
   createConversation,
+  deleteConversation,
   fetchConversations,
   type Conversation,
 } from '@/lib/chatApi'
@@ -91,6 +95,34 @@ export default function ConversationListScreen() {
     router.push(`/chat/${slug}/${id}`)
   }, [slug, router])
 
+  const confirmDeleteConversation = useCallback(
+    (item: Conversation) => {
+      Alert.alert(
+        'Delete conversation?',
+        'This thread and all messages will be removed.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              void (async () => {
+                try {
+                  await deleteConversation(item.id)
+                  setConversations((prev) => prev.filter((c) => c.id !== item.id))
+                  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : 'Could not delete')
+                }
+              })()
+            },
+          },
+        ],
+      )
+    },
+    [],
+  )
+
   if (loading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.canvas }]}>
@@ -123,23 +155,41 @@ export default function ConversationListScreen() {
             <View style={[styles.separator, { backgroundColor: colors.stroke }]} />
           )}
           renderItem={({ item }) => (
-            <Pressable
-              style={({ pressed }) => [
-                styles.row,
-                { backgroundColor: pressed ? colors.accentSoft : colors.canvas },
-              ]}
-              onPress={() => openConversation(item.id)}
+            <Swipeable
+              friction={2}
+              overshootRight={false}
+              renderRightActions={() => (
+                <View style={styles.swipeDeleteWrap}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.swipeDeleteBtn,
+                      { opacity: pressed ? 0.85 : 1 },
+                    ]}
+                    onPress={() => confirmDeleteConversation(item)}
+                  >
+                    <Text style={styles.swipeDeleteLabel}>Delete</Text>
+                  </Pressable>
+                </View>
+              )}
             >
-              <View style={styles.rowBody}>
-                <Text style={[styles.rowTitle, { color: colors.ink }]} numberOfLines={1}>
-                  {item.title ?? 'New conversation'}
-                </Text>
-                <Text style={[styles.rowDate, { color: colors.inkSubtle }]}>
-                  {formatDate(item.last_message_at)}
-                </Text>
-              </View>
-              <Text style={[styles.rowChevron, { color: colors.inkSubtle }]}>›</Text>
-            </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.row,
+                  { backgroundColor: pressed ? colors.accentSoft : colors.canvas },
+                ]}
+                onPress={() => openConversation(item.id)}
+              >
+                <View style={styles.rowBody}>
+                  <Text style={[styles.rowTitle, { color: colors.ink }]} numberOfLines={1}>
+                    {item.title ?? 'New conversation'}
+                  </Text>
+                  <Text style={[styles.rowDate, { color: colors.inkSubtle }]}>
+                    {formatDate(item.last_message_at)}
+                  </Text>
+                </View>
+                <Text style={[styles.rowChevron, { color: colors.inkSubtle }]}>›</Text>
+              </Pressable>
+            </Swipeable>
           )}
         />
       )}
@@ -201,6 +251,23 @@ const styles = StyleSheet.create({
   rowDate: { fontFamily: font.regular, fontSize: 12, marginTop: 2 },
   rowChevron: { fontFamily: font.regular, fontSize: 22 },
 
+  swipeDeleteWrap: {
+    justifyContent: 'center',
+  },
+  swipeDeleteBtn: {
+    backgroundColor: '#b91c1c',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 88,
+    flex: 1,
+    marginVertical: StyleSheet.hairlineWidth,
+  },
+  swipeDeleteLabel: {
+    fontFamily: font.semi,
+    fontSize: 14,
+    color: '#fff',
+  },
+
   separator: { height: StyleSheet.hairlineWidth, marginLeft: space.lg },
 
   fab: {
@@ -208,7 +275,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: space.xl,
     paddingVertical: space.md,
-    borderRadius: radius.full ?? 100,
+    borderRadius: 999,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,

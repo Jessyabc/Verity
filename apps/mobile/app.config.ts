@@ -63,6 +63,7 @@ const config: ExpoConfig = {
     favicon: './assets/images/favicon.png',
   },
   plugins: [
+    'expo-audio',
     [
       'expo-router',
       {

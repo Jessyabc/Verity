@@ -16,5 +16,8 @@ verify_jwt = false
 [functions.afaqi-chat]
 verify_jwt = false
 
+[functions.afaqi-tts]
+verify_jwt = false
+
 [functions.generate-watchlist-digest]
 verify_jwt = false

@@ -67,6 +67,12 @@ export async function createConversation(
   return data as Conversation
 }
 
+/** Deletes a conversation and all messages (DB cascade). */
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const { error } = await supabase.from('conversations').delete().eq('id', conversationId)
+  if (error) throw error
+}
+
 // ---------------------------------------------------------------------------
 // Messages
 // ---------------------------------------------------------------------------

@@ -8,11 +8,15 @@
  *  - Supports cross-company research and live Perplexity answers transparently
  */
 
+import Ionicons from '@expo/vector-icons/Ionicons'
 import { FunctionsHttpError } from '@supabase/supabase-js'
+import * as Clipboard from 'expo-clipboard'
+import * as Haptics from 'expo-haptics'
 import { useLocalSearchParams, useNavigation } from 'expo-router'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -31,6 +35,7 @@ import { openUrl } from '@/lib/openUrl'
 import { supabase } from '@/lib/supabase'
 import { font, radius, space } from '@/constants/theme'
 import { fetchMessages, fetchOlderMessages, type ChatMessageRow } from '@/lib/chatApi'
+import { speakAfaqiMessage, stopAfaqiSpeech } from '@/lib/afaqiSpeech'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,6 +64,18 @@ function safeHostname(url: string): string {
   try { return new URL(url).hostname } catch { return url }
 }
 
+/** Rotating status lines while Afaqi waits on the Edge Function (intent → sources → model). */
+const AFAQI_WAITING_PHRASES = [
+  'Searching your research…',
+  'Grounding in Verity context…',
+  'Checking sources…',
+  'Cross-referencing coverage…',
+  'Looking for related companies…',
+  'Gathering live context…',
+  'Synthesizing an answer…',
+  'Verifying against saved research…',
+] as const
+
 function rowToMessage(row: ChatMessageRow): Message {
   return {
     id: row.id,
@@ -69,14 +86,49 @@ function rowToMessage(row: ChatMessageRow): Message {
   }
 }
 
+function assistantMessageHasTools(msg: Message): boolean {
+  return msg.id !== 'welcome' && !msg.id.startsWith('error-')
+}
+
+type AfaqiEdgeErrorBody = {
+  error?: string
+  message?: string
+  code?: string
+  details?: string
+}
+
+/** Maps Edge Function JSON to a short, source-tagged line for the chat bubble. */
+function formatAfaqiEdgeBody(body: AfaqiEdgeErrorBody): string {
+  const base =
+    typeof body.error === 'string'
+      ? body.error
+      : typeof body.message === 'string'
+        ? body.message
+        : 'Request failed'
+  switch (body.code) {
+    case 'openai_upstream':
+      return `Model (OpenAI): ${base}`
+    case 'validation':
+      return `Request: ${base}`
+    case 'config':
+      return `Service: ${base}`
+    default:
+      return base
+  }
+}
+
 async function formatInvokeError(error: unknown): Promise<string> {
   if (error instanceof FunctionsHttpError) {
     const res = error.context
     if (res && typeof res === 'object' && 'json' in res && typeof res.json === 'function') {
       try {
-        const body = (await (res as Response).clone().json()) as { error?: string; message?: string }
-        if (typeof body?.error === 'string') return body.error
-        if (typeof body?.message === 'string') return body.message
+        const body = (await (res as Response).clone().json()) as AfaqiEdgeErrorBody
+        if (__DEV__ && body.details) {
+          console.warn('[afaqi-chat]', body.code ?? 'edge', body.details)
+        }
+        if (typeof body?.error === 'string' || typeof body?.message === 'string') {
+          return formatAfaqiEdgeBody(body)
+        }
       } catch { /* fall through */ }
     }
   }
@@ -98,7 +150,22 @@ function UserBubble({ msg, colors }: { msg: Message; colors: ReturnType<typeof u
   )
 }
 
-function AssistantBubble({ msg, colors }: { msg: Message; colors: ReturnType<typeof useVerityPalette> }) {
+function AssistantBubble({
+  msg,
+  colors,
+  onCopy,
+  onSpeak,
+  speakBusy,
+  isPlaying,
+}: {
+  msg: Message
+  colors: ReturnType<typeof useVerityPalette>
+  onCopy?: () => void
+  onSpeak?: () => void
+  speakBusy?: boolean
+  isPlaying?: boolean
+}) {
+  const showTools = Boolean(onCopy && onSpeak)
   return (
     <View style={styles.assistantRow}>
       <View style={styles.assistantAvatar}>
@@ -108,6 +175,35 @@ function AssistantBubble({ msg, colors }: { msg: Message; colors: ReturnType<typ
         <View style={[styles.assistantBubble, { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke }]}>
           <Text style={[styles.assistantText, { color: colors.ink }]}>{msg.content}</Text>
         </View>
+        {showTools ? (
+          <View style={styles.assistantTools}>
+            <Pressable
+              onPress={onSpeak}
+              disabled={speakBusy}
+              style={[styles.toolBtn, { borderColor: colors.stroke, backgroundColor: colors.canvas }]}
+              accessibilityRole="button"
+              accessibilityLabel="Play as AI-generated speech (OpenAI Cedar)"
+            >
+              {speakBusy ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : (
+                <Ionicons
+                  name={isPlaying ? 'stop-circle-outline' : 'volume-medium'}
+                  size={20}
+                  color={colors.accent}
+                />
+              )}
+            </Pressable>
+            <Pressable
+              onPress={onCopy}
+              style={[styles.toolBtn, { borderColor: colors.stroke, backgroundColor: colors.canvas }]}
+              accessibilityRole="button"
+              accessibilityLabel="Copy message"
+            >
+              <Ionicons name="copy-outline" size={20} color={colors.accent} />
+            </Pressable>
+          </View>
+        ) : null}
         {msg.sources && msg.sources.length > 0 ? (
           <View style={styles.sourcesRow}>
             {msg.sources.map((s, i) => (
@@ -128,14 +224,33 @@ function AssistantBubble({ msg, colors }: { msg: Message; colors: ReturnType<typ
   )
 }
 
-function TypingIndicator({ colors }: { colors: ReturnType<typeof useVerityPalette> }) {
+function AfaqiThinkingIndicator({ colors }: { colors: ReturnType<typeof useVerityPalette> }) {
+  const [phraseIndex, setPhraseIndex] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPhraseIndex((n) => (n + 1) % AFAQI_WAITING_PHRASES.length)
+    }, 2400)
+    return () => clearInterval(id)
+  }, [])
+
   return (
     <View style={styles.assistantRow}>
       <View style={styles.assistantAvatar}>
         <Text style={[styles.avatarText, { color: colors.accent }]}>A</Text>
       </View>
-      <View style={[styles.assistantBubble, { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke }]}>
-        <ActivityIndicator size="small" color={colors.accent} />
+      <View style={styles.assistantContent}>
+        <View style={[styles.assistantBubble, { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke }]}>
+          <View style={styles.thinkingRow}>
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text
+              style={[styles.thinkingText, { color: colors.inkSubtle }]}
+              numberOfLines={2}
+            >
+              {AFAQI_WAITING_PHRASES[phraseIndex]}
+            </Text>
+          </View>
+        </View>
       </View>
     </View>
   )
@@ -175,8 +290,53 @@ export default function ChatScreen() {
   const [historyReady, setHistoryReady] = useState(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [hasOlderMessages, setHasOlderMessages] = useState(false)
+  const [ttsBusyId, setTtsBusyId] = useState<string | null>(null)
+  const [ttsPlayingId, setTtsPlayingId] = useState<string | null>(null)
 
   const listRef = useRef<FlatList>(null)
+
+  useEffect(() => {
+    return () => {
+      void stopAfaqiSpeech()
+    }
+  }, [])
+
+  const handleCopyAssistant = useCallback(async (msg: Message) => {
+    try {
+      await Clipboard.setStringAsync(msg.content)
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const handleSpeakAssistant = useCallback(
+    async (msg: Message) => {
+      if (ttsBusyId === msg.id) return
+
+      if (ttsPlayingId === msg.id) {
+        await stopAfaqiSpeech()
+        setTtsPlayingId(null)
+        return
+      }
+
+      setTtsBusyId(msg.id)
+      setTtsPlayingId(null)
+      try {
+        await speakAfaqiMessage(msg.content, {
+          onPlaybackEnd: () => {
+            setTtsPlayingId((cur) => (cur === msg.id ? null : cur))
+          },
+        })
+        setTtsPlayingId(msg.id)
+      } catch (e) {
+        Alert.alert('Voice', e instanceof Error ? e.message : 'Playback failed')
+      } finally {
+        setTtsBusyId(null)
+      }
+    },
+    [ttsBusyId, ttsPlayingId],
+  )
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -286,19 +446,20 @@ export default function ChatScreen() {
 
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100)
     } catch (e) {
+      if (__DEV__) console.warn('[afaqi-chat] invoke failed', e)
       const detail = e instanceof Error ? e.message : 'Unknown error'
       setMessages((prev) => [
         ...prev,
         {
           id: `error-${Date.now()}`,
           role: 'assistant',
-          content: `Something went wrong: ${detail}. Please try again.`,
+          content: `${detail}. Please try again.`,
         },
       ])
     } finally {
       setLoading(false)
     }
-  }, [input, loading, messages, slug, conversationId, user])
+  }, [input, loading, slug, conversationId, user])
 
   // Context pill label
   const contextLabel = extraCompanyNames.length > 0
@@ -335,14 +496,23 @@ export default function ChatScreen() {
           }
         }}
         scrollEventThrottle={200}
-        renderItem={({ item }) =>
-          item.role === 'user' ? (
-            <UserBubble msg={item} colors={colors} />
-          ) : (
-            <AssistantBubble msg={item} colors={colors} />
+        renderItem={({ item }) => {
+          if (item.role === 'user') {
+            return <UserBubble msg={item} colors={colors} />
+          }
+          const tools = assistantMessageHasTools(item)
+          return (
+            <AssistantBubble
+              msg={item}
+              colors={colors}
+              onCopy={tools ? () => void handleCopyAssistant(item) : undefined}
+              onSpeak={tools ? () => void handleSpeakAssistant(item) : undefined}
+              speakBusy={ttsBusyId === item.id}
+              isPlaying={ttsPlayingId === item.id}
+            />
           )
-        }
-        ListFooterComponent={loading ? <TypingIndicator colors={colors} /> : null}
+        }}
+        ListFooterComponent={loading ? <AfaqiThinkingIndicator colors={colors} /> : null}
         onContentSizeChange={() => {
           if (loading) listRef.current?.scrollToEnd({ animated: true })
         }}
@@ -448,6 +618,35 @@ const styles = StyleSheet.create({
     paddingVertical: space.sm + 2,
   },
   assistantText: { fontFamily: font.regular, fontSize: 15, lineHeight: 22 },
+
+  assistantTools: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    marginTop: space.xs,
+  },
+  toolBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  thinkingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    minWidth: 0,
+  },
+  thinkingText: {
+    flex: 1,
+    fontFamily: font.medium,
+    fontSize: 14,
+    lineHeight: 20,
+    fontStyle: 'italic',
+  },
 
   sourcesRow: {
     flexDirection: 'row',
