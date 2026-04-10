@@ -2,74 +2,26 @@
  * Invoke from the app: supabase.functions.invoke('research-company', { body: { slug, companyName, ticker } })
  * Requires a signed-in user (Authorization: Bearer <access_token>).
  * Secrets: PERPLEXITY_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+ *
+ * Architecture: 3 focused parallel Perplexity calls
+ *   1. Financial Highlights  — structured key metrics from official filings
+ *   2. Company Narrative     — official IR/SEC narrative + sources
+ *   3. Media Narrative       — independent third-party coverage + factual gaps
+ *
+ * Source contamination: after parsing, company-owned and syndicated-press URLs are
+ * deterministically removed from media_sources using company_sources roots from DB.
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
 import { corsHeaders } from '../_shared/cors.ts'
 import { requireSession } from '../_shared/requireSession.ts'
 
-function buildPrompt(companyName: string, ticker: string | null): string {
-  const t = ticker ? ` (${ticker})` : ''
-  return (
-    `You are a neutral research assistant for ${companyName}${t}. ` +
-    `Enforce strict source separation at all times.\n\n` +
-    `GLOBAL RULES:\n` +
-    `- 100% factual and neutral. No sentiment, no advice, no forecasting.\n` +
-    `- Never use words like "bullish", "bearish", "buy", "sell", "should", or "recommend".\n` +
-    `- Do NOT use TikTok, Facebook, Instagram, Reddit, or fan blogs.\n\n` +
-    `COMPANY NARRATIVE (required text field company_narrative):\n` +
-    `Strict source rules for Company Narrative:\n` +
-    `- ONLY official sources: investor relations page, SEC filings, earnings releases, and company press releases.\n` +
-    `- NEVER use or cite third-party news, analysts, or independent commentary.\n\n` +
-    `Summarize ONLY official company sources: investor relations page, press releases, latest 10-K/SEC filings, ` +
-    `earnings releases. Do not use any third-party news.\n\n` +
-    `MEDIA & ANALYST NARRATIVE (required text field media_narrative):\n` +
-    `// === MEDIA & ANALYST NARRATIVE RULES (add this verbatim) ===\n` +
-    `Strict source rules for Media & Analyst Narrative:\n\n` +
-    `- ONLY use truly independent third-party sources: editorial news outlets with journalist bylines, sell-side analyst reports, Seeking Alpha, Yahoo Finance commentary, The Quantum Insider, reputable YouTube channels run by independent creators/journalists, peer-reviewed papers (Nature, IEEE, arXiv when not company-authored), university/lab pages, or independent conference coverage.\n\n` +
-    `- NEVER use or cite:\n` +
-    `  - The company’s own website or any subdomain (e.g. ionq.com, quantumemotion.com)\n` +
-    `  - Corporate newsroom, press, blog, careers, or investor pages\n` +
-    `  - Official company YouTube channel, LinkedIn company page, or X account\n` +
-    `  - Syndicated press releases (GlobeNewswire, PR Newswire, Business Wire, Newsfile) even if hosted on third-party domains — treat these as company messaging\n\n` +
-    `- YouTube / video: Only include if the channel/publisher is clearly independent (news org, university, known finance creator). Exclude any video that is a repost or verbatim reading of a company press release.\n\n` +
-    `- If independent coverage is very limited or nonexistent, explicitly state in the narrative: "Limited independent media and analyst coverage found." Do not pad the section with first-party content. Return fewer or zero media_sources if necessary.\n\n` +
-    `- Always list sources at the bottom clearly labeled "Media & Analyst".\n\n` +
-    `Summarize ONLY independent third-party sources: news articles, analyst reports, Seeking Alpha, Yahoo Finance, ` +
-    `credible financial press. Explicitly exclude the company's own website and company press releases.\n\n` +
-    `FACTUAL GAPS (factual_gaps array):\n` +
-    `3–5 items. Prefer objects: { "category": string, "text": string }. Plain strings are allowed but objects are preferred.\n` +
-    `category must be one of: numeric | disclosure | timing | definition | coverage (use at most one item per category when possible).\n` +
-    `Gap types to rotate (do not repeat the same sentence template across bullets):\n` +
-    `(1) numeric — only when both sides cite numbers (e.g. company line item vs consensus or third-party figure).\n` +
-    `(2) disclosure — topic appears in filings/MD&A vs absent or thin elsewhere (or reverse).\n` +
-    `(3) timing — event date, fiscal period, or document vintage differs between sources.\n` +
-    `(4) definition — non-GAAP label, segment, geography, or scope differs between sources.\n` +
-    `(5) coverage — asymmetry: what official sources document vs what independent sources in your list do or do not address (no speculation, no motive).\n` +
-    `If independent coverage is thin: prefer 2–3 strong gaps over weak padding; include at least one coverage- or disclosure-type gap when applicable.\n` +
-    `When possible, one bullet should name time periods or document types (e.g. Q3 earnings vs FY 10-K).\n` +
-    `Do not use the same template repeatedly (e.g. avoid five “company claims X / media claims Y” lines). ` +
-    `Do not use “sentiment”, “market reaction”, or evaluative adjectives.\n\n` +
-    `SOURCES:\n` +
-    `- company_sources: URLs that are ONLY official IR / SEC / earnings (same scope as company narrative).\n` +
-    `- media_sources: URLs that are ONLY third-party (same scope as media narrative). Never put a company official URL in media_sources.\n` +
-    `- items: same objects as company_sources + media_sources combined (dedupe by URL).\n\n` +
-    `Respond with ONLY valid JSON (no markdown fences) in this exact shape:\n` +
-    `{\n` +
-    `  "factual_gaps": [ { "category": "numeric"|"disclosure"|"timing"|"definition"|"coverage", "text": string } | string ],\n` +
-    `  "company_narrative": string,\n` +
-    `  "company_sources": [\n` +
-    `    { "title": string, "url": string, "source": string|null, "snippet": string|null, "published_at": string|null }\n` +
-    `  ],\n` +
-    `  "media_narrative": string,\n` +
-    `  "media_sources": [\n` +
-    `    { "title": string, "url": string, "source": string|null, "snippet": string|null, "published_at": string|null }\n` +
-    `  ],\n` +
-    `  "synthesis": string,\n` +
-    `  "items": [ /* union of company_sources and media_sources; same schema */ ]\n` +
-    `}\n` +
-    `Cap factual_gaps at 5; cap company_sources and media_sources at 12 each; omit duplicate URLs.`
-  )
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type FactualGapRow = { text: string; category?: string }
+type FinancialMetric = { label: string; value: string; yoy?: string | null }
+type FinancialHighlights = { period: string; period_end?: string | null; metrics: FinancialMetric[] }
+
+// ─── URL / source utilities ───────────────────────────────────────────────────
 
 /** Prefer official / IR / SEC; demote social and video aggregators after the model returns. */
 function scoreResearchUrl(url: string): number {
@@ -140,8 +92,6 @@ function sanitizeItems(
   return items
 }
 
-type FactualGapRow = { text: string; category?: string }
-
 const GAP_CATEGORIES = new Set(['numeric', 'disclosure', 'timing', 'definition', 'coverage'])
 
 function parseFactualGaps(raw: unknown): FactualGapRow[] {
@@ -182,7 +132,7 @@ function registrableRootGuess(hostname: string): string | null {
   const h = hostname.toLowerCase().replace(/^www\./, '')
   const parts = h.split('.').filter(Boolean)
   if (parts.length < 2) return null
-  // Heuristic: good enough for most .com/.io/.ai. May be imperfect for co.uk-style domains.
+  // Heuristic: works for .com/.io/.ai; may be imperfect for co.uk-style domains.
   return parts.slice(-2).join('.')
 }
 
@@ -202,19 +152,20 @@ function isSyndicatedPressHost(hostname: string): boolean {
   )
 }
 
-async function reconcileSources(
+// ─── DB helpers ───────────────────────────────────────────────────────────────
+
+/** Fetch official domain roots from company_sources in the DB. */
+async function getOfficialRoots(
   supabase: ReturnType<typeof createClient>,
-  parsedItems: Array<Record<string, unknown>>,
   companySlug: string,
-): Promise<Array<Record<string, unknown>>> {
-  // Fetch official roots from DB
+): Promise<string[]> {
   const { data: company } = await supabase
     .from('companies')
     .select('id')
     .eq('slug', companySlug)
     .maybeSingle()
 
-  if (!company?.id) return parsedItems
+  if (!company?.id) return []
 
   const { data: sources } = await supabase
     .from('company_sources')
@@ -232,17 +183,20 @@ async function reconcileSources(
       // ignore malformed base_url
     }
   }
-  const officialRoots = [...roots]
+  return [...roots]
+}
 
-  // Reassign any leaked first-party or syndicated-PR items
-  const reconciled = parsedItems.map((item) => {
+/** Reassign narrative_scope for leaked first-party / syndicated-PR items and dedupe. */
+function applySourceReconciliation(
+  items: Array<Record<string, unknown>>,
+  officialRoots: string[],
+): Array<Record<string, unknown>> {
+  const reconciled = items.map((item) => {
     const url = typeof item.url === 'string' ? item.url : ''
     if (!url) return item
     try {
       const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '')
-      if (isSyndicatedPressHost(host)) {
-        return { ...item, narrative_scope: 'company' }
-      }
+      if (isSyndicatedPressHost(host)) return { ...item, narrative_scope: 'company' }
     } catch {
       // fall through
     }
@@ -252,7 +206,7 @@ async function reconcileSources(
     return item
   })
 
-  // Simple dedupe by URL
+  // Dedupe by URL
   return reconciled.filter((item, index, self) => {
     const url = typeof item.url === 'string' ? item.url : ''
     if (!url) return false
@@ -260,76 +214,239 @@ async function reconcileSources(
   })
 }
 
-function parseResponse(content: string): {
-  synthesis: string | null
-  company_narrative: string | null
-  media_narrative: string | null
-  factual_gaps: FactualGapRow[]
-  items: Array<Record<string, unknown>>
-} {
+/**
+ * Hard-filter: remove any media source URL that is company-owned or syndicated press.
+ * This is the deterministic post-processing layer on top of prompt-based enforcement.
+ */
+function filterContaminatedMediaSources(
+  mediaSources: Array<Record<string, unknown>>,
+  officialRoots: string[],
+): Array<Record<string, unknown>> {
+  return mediaSources.filter((item) => {
+    const url = typeof item.url === 'string' ? item.url : ''
+    if (!url) return false
+    try {
+      const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '')
+      if (isSyndicatedPressHost(host)) return false
+      if (isUnderOfficialRoot(url, officialRoots)) return false
+    } catch {
+      // keep item if URL parse fails
+    }
+    return true
+  })
+}
+
+// ─── Perplexity caller ────────────────────────────────────────────────────────
+
+async function callPerplexity(
+  apiKey: string,
+  model: string,
+  systemMessage: string,
+  userMessage: string,
+  opts?: { recencyFilter?: 'month' | 'week' | 'day' },
+): Promise<string> {
+  const body: Record<string, unknown> = {
+    model,
+    temperature: 0.2,
+    messages: [
+      { role: 'system', content: systemMessage },
+      { role: 'user', content: userMessage },
+    ],
+  }
+  if (opts?.recencyFilter) {
+    body.search_recency_filter = opts.recencyFilter
+  }
+
+  const res = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`Perplexity HTTP ${res.status}: ${errText.slice(0, 400)}`)
+  }
+
+  const pjson = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>
+  }
+  const content = pjson.choices?.[0]?.message?.content
+  if (!content) throw new Error('Empty Perplexity response')
+  return content
+}
+
+// ─── Prompt builders ──────────────────────────────────────────────────────────
+
+function buildFinancialHighlightsPrompt(
+  companyName: string,
+  ticker: string | null,
+  currentDate: string,
+): string {
+  const t = ticker ? ` (${ticker})` : ''
+  return (
+    `Today is ${currentDate}. Extract structured key financial highlights for ${companyName}${t} ` +
+    `from the most recently completed fiscal quarter or annual period.\n\n` +
+    `Rules:\n` +
+    `- Use ONLY official SEC filings, earnings releases, and investor relations materials.\n` +
+    `- Identify the exact fiscal period you are citing (e.g. "Q2 FY2025 ended March 30, 2025"). ` +
+    `If the most recent quarter has not yet been reported, use the prior completed quarter.\n` +
+    `- Include: total revenue, net income, and the most important segment revenues ` +
+    `(e.g. key product categories or geographic segments).\n` +
+    `- Express dollar values in billions ($XB) or millions ($XM) with one decimal place.\n` +
+    `- Express year-over-year change with a sign (e.g. "+5.1%" or "-2.3%"). Use null if unavailable.\n` +
+    `- Cap at 8 metrics. Prioritize top-level totals over granular sub-metrics.\n` +
+    `- If you cannot locate reliable data, return an empty metrics array.\n\n` +
+    `Respond with ONLY valid JSON (no markdown fences):\n` +
+    `{ "period": string, "period_end": string | null, "metrics": [{ "label": string, "value": string, "yoy": string | null }] }`
+  )
+}
+
+function buildCompanyNarrativePrompt(
+  companyName: string,
+  ticker: string | null,
+  currentDate: string,
+): string {
+  const t = ticker ? ` (${ticker})` : ''
+  return (
+    `Today is ${currentDate}. Summarize the official company narrative for ${companyName}${t}.\n\n` +
+    `STRICT SOURCE RULES:\n` +
+    `- ONLY use: investor relations page, SEC filings (10-K, 10-Q, 8-K), earnings releases, ` +
+    `and company press releases.\n` +
+    `- NEVER cite third-party news, analyst reports, or independent commentary.\n\n` +
+    `Focus on: business strategy, product developments, financial guidance, key operational updates, ` +
+    `and management commentary from the most recent earnings call or filing.\n` +
+    `Be factual and neutral — no sentiment, no investment advice, no forecasting language.\n` +
+    `Do not repeat financial figures already captured in a separate highlights section; ` +
+    `focus on strategy and context.\n\n` +
+    `Respond with ONLY valid JSON (no markdown fences):\n` +
+    `{\n` +
+    `  "company_narrative": string,\n` +
+    `  "company_sources": [{ "title": string, "url": string, "source": string|null, "snippet": string|null, "published_at": string|null }]\n` +
+    `}\n` +
+    `Cap company_sources at 8. The narrative should be 2–4 focused paragraphs.`
+  )
+}
+
+function buildMediaNarrativePrompt(
+  companyName: string,
+  ticker: string | null,
+  currentDate: string,
+): string {
+  const t = ticker ? ` (${ticker})` : ''
+  return (
+    `Today is ${currentDate}. Summarize independent third-party coverage and identify factual gaps ` +
+    `for ${companyName}${t}.\n\n` +
+    `STRICT SOURCE RULES FOR MEDIA NARRATIVE:\n` +
+    `- ONLY use: editorial news with journalist bylines, sell-side analyst reports, ` +
+    `Seeking Alpha, Yahoo Finance editorial commentary, peer-reviewed papers, ` +
+    `university/lab pages, or reputable independent finance creators.\n` +
+    `- NEVER use or cite:\n` +
+    `  * The company's own website or any subdomain\n` +
+    `  * Corporate newsroom, press releases, blog, careers, or investor pages\n` +
+    `  * Official company YouTube, LinkedIn, or X/Twitter accounts\n` +
+    `  * Syndicated press releases (GlobeNewswire, PR Newswire, Business Wire, Newsfile) — ` +
+    `treat these as company messaging\n` +
+    `- If independent coverage is limited, explicitly state ` +
+    `"Limited independent media and analyst coverage found." ` +
+    `Return fewer or zero media_sources rather than padding with company content.\n\n` +
+    `FACTUAL GAPS (3–5 items):\n` +
+    `Identify objective discrepancies between what official disclosures state and what independent ` +
+    `coverage addresses or contests.\n` +
+    `category must be one of: numeric | disclosure | timing | definition | coverage\n` +
+    `Do not editorialize or imply intent — state the factual mismatch only.\n` +
+    `Do not repeat the same sentence template across bullets.\n\n` +
+    `Respond with ONLY valid JSON (no markdown fences):\n` +
+    `{\n` +
+    `  "media_narrative": string,\n` +
+    `  "media_sources": [{ "title": string, "url": string, "source": string|null, "snippet": string|null, "published_at": string|null }],\n` +
+    `  "factual_gaps": [{ "category": "numeric"|"disclosure"|"timing"|"definition"|"coverage", "text": string }]\n` +
+    `}\n` +
+    `Cap media_sources at 8. Cap factual_gaps at 5.`
+  )
+}
+
+// ─── Response parsers ─────────────────────────────────────────────────────────
+
+function extractJsonObject(content: string): Record<string, unknown> {
   const trimmed = content.trim()
   let jsonStr = trimmed
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (fence) jsonStr = fence[1].trim()
-
   const parsed = JSON.parse(jsonStr) as unknown
-
-  // Support legacy bare array
-  if (Array.isArray(parsed)) {
-    return {
-      synthesis: null,
-      company_narrative: null,
-      media_narrative: null,
-      factual_gaps: [] as FactualGapRow[],
-      items: sanitizeItems(parsed),
-    }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Expected a JSON object')
   }
-
-  if (!parsed || typeof parsed !== 'object') {
-    throw new Error('Model did not return expected JSON shape')
-  }
-
-  const obj = parsed as Record<string, unknown>
-
-  const synthesis          = typeof obj.synthesis          === 'string' ? obj.synthesis.trim()          || null : null
-  const company_narrative  = typeof obj.company_narrative  === 'string' ? obj.company_narrative.trim()  || null : null
-  const media_narrative    = typeof obj.media_narrative    === 'string' ? obj.media_narrative.trim()    || null : null
-
-  const factual_gaps = parseFactualGaps(obj.factual_gaps)
-
-  // Merge all sources into items[]
-  const companySources = Array.isArray(obj.company_sources)
-    ? sanitizeItems(obj.company_sources, 12, 'company')
-    : []
-  const mediaSources = Array.isArray(obj.media_sources)
-    ? sanitizeItems(obj.media_sources, 12, 'media')
-    : []
-  const legacyItems = Array.isArray(obj.items) ? sanitizeItems(obj.items, 25) : []
-
-  // Deduplicate by URL — company rows first, then media, then untagged legacy (score URL for bucket).
-  const urlSeen = new Set<string>()
-  const items: Array<Record<string, unknown>> = []
-  for (const item of [...companySources, ...mediaSources]) {
-    const url = item.url as string
-    if (!urlSeen.has(url)) {
-      urlSeen.add(url)
-      items.push(item)
-    }
-    if (items.length >= 25) break
-  }
-  for (const item of legacyItems) {
-    const url = item.url as string
-    if (urlSeen.has(url)) continue
-    urlSeen.add(url)
-    if (!item.narrative_scope) {
-      item.narrative_scope = scoreResearchUrl(url) >= 55 ? 'company' : 'media'
-    }
-    items.push(item)
-    if (items.length >= 25) break
-  }
-
-  return { synthesis, company_narrative, media_narrative, factual_gaps, items }
+  return parsed as Record<string, unknown>
 }
+
+function parseFinancialHighlightsResponse(content: string): FinancialHighlights | null {
+  try {
+    const obj = extractJsonObject(content)
+    const period = typeof obj.period === 'string' ? obj.period.trim() : ''
+    if (!period) return null
+    const period_end = typeof obj.period_end === 'string' ? obj.period_end.trim() || null : null
+    const metrics: FinancialMetric[] = []
+    if (Array.isArray(obj.metrics)) {
+      for (const m of obj.metrics) {
+        if (!m || typeof m !== 'object') continue
+        const mo = m as Record<string, unknown>
+        const label = typeof mo.label === 'string' ? mo.label.trim() : ''
+        const value = typeof mo.value === 'string' ? mo.value.trim() : ''
+        if (!label || !value) continue
+        const yoy = typeof mo.yoy === 'string' ? mo.yoy.trim() || null : null
+        metrics.push({ label, value, yoy })
+        if (metrics.length >= 8) break
+      }
+    }
+    return { period, period_end, metrics }
+  } catch {
+    return null
+  }
+}
+
+function parseCompanyNarrativeResponse(content: string): {
+  company_narrative: string | null
+  company_sources: Array<Record<string, unknown>>
+} {
+  try {
+    const obj = extractJsonObject(content)
+    return {
+      company_narrative:
+        typeof obj.company_narrative === 'string' ? obj.company_narrative.trim() || null : null,
+      company_sources: Array.isArray(obj.company_sources)
+        ? sanitizeItems(obj.company_sources, 8, 'company')
+        : [],
+    }
+  } catch {
+    return { company_narrative: null, company_sources: [] }
+  }
+}
+
+function parseMediaNarrativeResponse(content: string): {
+  media_narrative: string | null
+  media_sources: Array<Record<string, unknown>>
+  factual_gaps: FactualGapRow[]
+} {
+  try {
+    const obj = extractJsonObject(content)
+    return {
+      media_narrative:
+        typeof obj.media_narrative === 'string' ? obj.media_narrative.trim() || null : null,
+      media_sources: Array.isArray(obj.media_sources)
+        ? sanitizeItems(obj.media_sources, 8, 'media')
+        : [],
+      factual_gaps: parseFactualGaps(obj.factual_gaps),
+    }
+  } catch {
+    return { media_narrative: null, media_sources: [], factual_gaps: [] }
+  }
+}
+
+// ─── Main handler ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -363,47 +480,11 @@ Deno.serve(async (req) => {
 
     const perplexityKey = Deno.env.get('PERPLEXITY_API_KEY')?.trim()
     if (!perplexityKey) {
-      return new Response(JSON.stringify({ error: 'PERPLEXITY_API_KEY not set on Edge Function' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return new Response(
+        JSON.stringify({ error: 'PERPLEXITY_API_KEY not set on Edge Function' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
     }
-
-    const model = Deno.env.get('PERPLEXITY_MODEL')?.trim() || 'sonar-pro'
-
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${perplexityKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You have access to web search. Enforce strict source separation at all times. Company narrative + company_sources: ONLY official IR, SEC filings, earnings releases, and company press releases. Media & Analyst narrative + media_sources: ONLY truly independent third-party sources; NEVER cite the company website/subdomains; treat syndicated press releases (PR Newswire/GlobeNewswire/Business Wire/Newsfile) as company messaging; exclude official company social/video channels; if independent coverage is limited, explicitly say "Limited independent media and analyst coverage found." and return fewer/zero media_sources rather than padding with first-party content. Remain neutral: no sentiment, no investment advice. Return only valid JSON as instructed. No markdown fences.',
-          },
-          {
-            role: 'user',
-            content: buildPrompt(companyName, body.ticker ?? null),
-          },
-        ],
-      }),
-    })
-
-    if (!res.ok) {
-      const errText = await res.text()
-      throw new Error(`Perplexity HTTP ${res.status}: ${errText.slice(0, 400)}`)
-    }
-
-    const pjson = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>
-    }
-    const content = pjson.choices?.[0]?.message?.content
-    if (!content) throw new Error('Empty Perplexity response')
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim()
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim()
@@ -414,21 +495,88 @@ Deno.serve(async (req) => {
       )
     }
 
+    const model = Deno.env.get('PERPLEXITY_MODEL')?.trim() || 'sonar-pro'
     const supabase = createClient(supabaseUrl, serviceKey)
+    const currentDate = new Date().toISOString().split('T')[0] // "YYYY-MM-DD"
+    const ticker = body.ticker ?? null
 
-    const { synthesis, company_narrative, media_narrative, factual_gaps, items: rawItems } = parseResponse(content)
-    const reconciledItems = await reconcileSources(supabase, rawItems, slug)
+    // ── 3 focused parallel Perplexity calls ───────────────────────────────────
+    const [financialContent, companyContent, mediaContent] = await Promise.all([
+      callPerplexity(
+        perplexityKey,
+        model,
+        'You have web search access. Extract financial metrics from official SEC filings and earnings releases only. Return valid JSON only. No markdown fences.',
+        buildFinancialHighlightsPrompt(companyName, ticker, currentDate),
+      ).catch((err: unknown) => {
+        console.error('Financial highlights call failed:', err instanceof Error ? err.message : String(err))
+        return null
+      }),
+
+      callPerplexity(
+        perplexityKey,
+        model,
+        'You have web search access. Use ONLY official IR, SEC filings, earnings releases, and company press releases. Never cite third-party news. Return valid JSON only. No markdown fences.',
+        buildCompanyNarrativePrompt(companyName, ticker, currentDate),
+      ).catch((err: unknown) => {
+        console.error('Company narrative call failed:', err instanceof Error ? err.message : String(err))
+        return null
+      }),
+
+      callPerplexity(
+        perplexityKey,
+        model,
+        'You have web search access. Use ONLY truly independent third-party sources. NEVER cite company websites, subdomains, or syndicated press releases (PR Newswire, GlobeNewswire, Business Wire, Newsfile). Return valid JSON only. No markdown fences.',
+        buildMediaNarrativePrompt(companyName, ticker, currentDate),
+        { recencyFilter: 'month' },
+      ).catch((err: unknown) => {
+        console.error('Media narrative call failed:', err instanceof Error ? err.message : String(err))
+        return null
+      }),
+    ])
+
+    if (!financialContent && !companyContent && !mediaContent) {
+      throw new Error('All 3 Perplexity calls failed')
+    }
+
+    // ── Parse each response ───────────────────────────────────────────────────
+    const financial_highlights = financialContent
+      ? parseFinancialHighlightsResponse(financialContent)
+      : null
+
+    const { company_narrative, company_sources } = companyContent
+      ? parseCompanyNarrativeResponse(companyContent)
+      : { company_narrative: null, company_sources: [] }
+
+    const {
+      media_narrative,
+      media_sources: rawMediaSources,
+      factual_gaps,
+    } = mediaContent
+      ? parseMediaNarrativeResponse(mediaContent)
+      : { media_narrative: null, media_sources: [], factual_gaps: [] }
+
+    // ── Deterministic source contamination check ──────────────────────────────
+    const officialRoots = await getOfficialRoots(supabase, slug)
+    // Hard-remove any company-owned / syndicated-press URLs from media_sources
+    const media_sources = filterContaminatedMediaSources(rawMediaSources, officialRoots)
+
+    // ── Merge, reconcile, rank all items for the headlines view ───────────────
+    const mergedItems = [...company_sources, ...media_sources]
+    const reconciledItems = applySourceReconciliation(mergedItems, officialRoots)
     const items = rankResearchItems(reconciledItems)
+
+    // ── Persist to DB ─────────────────────────────────────────────────────────
     const { error: upErr } = await supabase.from('company_research_cache').upsert(
       {
         slug,
         company_name: companyName,
-        ticker: body.ticker ?? null,
+        ticker,
         items,
-        synthesis: synthesis ?? null,
+        synthesis: null,
         company_narrative: company_narrative ?? null,
         media_narrative: media_narrative ?? null,
         factual_gaps: factual_gaps ?? [],
+        financial_highlights: financial_highlights ?? null,
         fetched_at: new Date().toISOString(),
         error: null,
         model,
@@ -439,7 +587,16 @@ Deno.serve(async (req) => {
     if (upErr) throw upErr
 
     return new Response(
-      JSON.stringify({ ok: true, items, synthesis, company_narrative, media_narrative, factual_gaps, model, count: items.length }),
+      JSON.stringify({
+        ok: true,
+        items,
+        company_narrative,
+        media_narrative,
+        factual_gaps,
+        financial_highlights,
+        model,
+        count: items.length,
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   } catch (e) {
