@@ -5,7 +5,7 @@
 import { HeaderBackButton, useHeaderHeight } from '@react-navigation/elements'
 import type { NativeStackHeaderBackProps } from '@react-navigation/native-stack'
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   LayoutAnimation,
@@ -44,6 +44,7 @@ import {
   fetchResearchCacheRow,
   type CompanyResearchRow,
   type FactualGap,
+  type FinancialHighlights,
   type ResearchNewsItem,
 } from '@/lib/researchCache'
 import { invokeResearchCompany } from '@/lib/researchRefresh'
@@ -187,6 +188,54 @@ function FactualGapsHero({ gaps }: { gaps: FactualGap[] }) {
             Refresh research to surface factual mismatches.
           </Text>
         )}
+      </View>
+    </GlassChrome>
+  )
+}
+
+function FinancialHighlightsCard({ highlights }: { highlights: FinancialHighlights }) {
+  const metrics = highlights.metrics.slice(0, 8)
+  return (
+    <GlassChrome>
+      <View style={[styles.highlightsPad, { backgroundColor: BRAND.glassNavy }]}>
+        <View style={styles.highlightsHeaderRow}>
+          <Text style={styles.highlightsTitle}>KEY FINANCIAL HIGHLIGHTS</Text>
+          <View style={[styles.periodChip, { borderColor: BRAND.stroke }]}>
+            <Text style={[styles.periodChipText, { color: BRAND.onNavySubtle }]}>
+              {highlights.period}
+              {highlights.period_end ? ` · ${highlights.period_end}` : ''}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.metricsGrid}>
+          {metrics.map((m, i) => (
+            <View key={i} style={styles.metricCell}>
+              <Text style={[styles.metricLabel, { color: BRAND.onNavySubtle }]} numberOfLines={1}>
+                {m.label}
+              </Text>
+              <Text style={[styles.metricValue, { color: BRAND.onNavy }]}>{m.value}</Text>
+              {m.yoy ? (
+                <Text
+                  style={[
+                    styles.metricYoy,
+                    {
+                      color: m.yoy.startsWith('+')
+                        ? '#34d399'
+                        : m.yoy.startsWith('-')
+                          ? '#f87171'
+                          : BRAND.onNavySubtle,
+                    },
+                  ]}
+                >
+                  {m.yoy}
+                </Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+        <Text style={[styles.highlightsFooter, { color: BRAND.onNavySubtle }]}>
+          From official IR &amp; SEC filings only
+        </Text>
       </View>
     </GlassChrome>
   )
@@ -391,6 +440,9 @@ export default function CompanyScreen() {
 
   const savedUrls = savedUrlSet(savedRows)
 
+  // Prevents auto-research from firing more than once per slug.
+  const autoRefreshFiredRef = useRef(false)
+
   const load = useCallback(async () => {
     if (!slug) {
       setLoading(false)
@@ -413,6 +465,21 @@ export default function CompanyScreen() {
           /* optional */
         }
       }
+
+      // First visit: no cached research → kick off fetch automatically.
+      if (!r && !autoRefreshFiredRef.current) {
+        autoRefreshFiredRef.current = true
+        setResearchBusy(true)
+        try {
+          await invokeResearchCompany(bundle.company.slug, bundle.company.name, bundle.company.ticker)
+          setResearch(await fetchResearchCacheRow(bundle.company.slug))
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+        } catch (e) {
+          setError(formatUnknownError(e))
+        } finally {
+          setResearchBusy(false)
+        }
+      }
     } catch (e) {
       setError(formatUnknownError(e))
     } finally {
@@ -421,6 +488,7 @@ export default function CompanyScreen() {
   }, [slug, user])
 
   useEffect(() => {
+    autoRefreshFiredRef.current = false // reset when navigating to a new company
     void load()
   }, [load])
 
@@ -646,7 +714,14 @@ export default function CompanyScreen() {
           <FactualGapsHero gaps={factualGaps} />
         </View>
 
-        {/* 4 — Company narrative */}
+        {/* 4 — Financial highlights */}
+        {research?.financial_highlights?.metrics?.length ? (
+          <View style={styles.narrSectionSpacing}>
+            <FinancialHighlightsCard highlights={research.financial_highlights} />
+          </View>
+        ) : null}
+
+        {/* 5 — Company narrative */}
         <View style={styles.narrSectionSpacing}>
           <NarrativeCard
             title="Company Narrative"
@@ -664,7 +739,7 @@ export default function CompanyScreen() {
           />
         </View>
 
-        {/* 5 — Media & analyst narrative */}
+        {/* 6 — Media & analyst narrative */}
         <View style={styles.narrSectionSpacing}>
           <NarrativeCard
             title="Media & Analyst Narrative"
@@ -682,7 +757,7 @@ export default function CompanyScreen() {
           />
         </View>
 
-        {/* 6 — Discuss */}
+        {/* 7 — Discuss */}
         <Pressable
           style={({ pressed }) => [
             styles.discussBtn,
@@ -853,6 +928,56 @@ const styles = StyleSheet.create({
     marginTop: space.md,
     lineHeight: 16,
   },
+
+  highlightsPad: { padding: space.lg, borderRadius: radius.lg },
+  highlightsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: space.sm,
+    flexWrap: 'wrap',
+    marginBottom: space.lg,
+  },
+  highlightsTitle: {
+    fontFamily: font.bold,
+    fontSize: 11,
+    letterSpacing: 0.9,
+    color: BRAND.tealLight,
+    flexShrink: 1,
+  },
+  periodChip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: 3,
+  },
+  periodChipText: { fontFamily: font.regular, fontSize: 10 },
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space.md,
+  },
+  metricCell: { width: '45%', flexGrow: 1 },
+  metricLabel: {
+    fontFamily: font.medium,
+    fontSize: 10,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  metricValue: {
+    fontFamily: font.semi,
+    fontSize: 19,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.3,
+  },
+  metricYoy: {
+    fontFamily: font.medium,
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
+    marginTop: 2,
+  },
+  highlightsFooter: { fontFamily: font.regular, fontSize: 11, marginTop: space.md },
 
   backBtn: {
     marginTop: space.xl,
