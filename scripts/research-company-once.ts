@@ -29,11 +29,15 @@ async function main() {
 
   const supabase = createClient(supabaseUrl.trim(), serviceKey.trim())
 
-  console.log('Fetching Perplexity…', company.name)
-  const { items, model } = await fetchCompanyResearchFromPerplexity(
-    company.name,
-    company.ticker,
-  )
+  console.log('Fetching Perplexity (3 parallel calls)…', company.name)
+  const {
+    items,
+    model,
+    company_narrative,
+    media_narrative,
+    factual_gaps,
+    financial_highlights,
+  } = await fetchCompanyResearchFromPerplexity(company.name, company.ticker)
 
   const { error } = await supabase.from('company_research_cache').upsert(
     {
@@ -41,6 +45,10 @@ async function main() {
       company_name: company.name,
       ticker: company.ticker,
       items,
+      company_narrative: company_narrative ?? null,
+      media_narrative: media_narrative ?? null,
+      factual_gaps: factual_gaps ?? [],
+      financial_highlights: financial_highlights ?? null,
       fetched_at: new Date().toISOString(),
       error: null,
       model,
@@ -53,7 +61,12 @@ async function main() {
     process.exit(1)
   }
 
-  console.log('OK', items.length, 'items', model)
+  console.log(
+    'OK', items.length, 'items',
+    '|', financial_highlights?.period ?? 'no highlights',
+    '|', factual_gaps.length, 'gaps',
+    '|', model,
+  )
 }
 
 main().catch((e) => {

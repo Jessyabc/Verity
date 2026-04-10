@@ -3,9 +3,12 @@ import { Button } from '@/components/ui/Button'
 import { useCompanyResearch } from '@/hooks/useCompanyResearch'
 import { classifyItem } from '@/lib/headlineGrouping'
 import type { ResearchNewsItem } from '@/lib/research/types'
+import type { FinancialHighlights } from '@/lib/supabase/researchQueries'
 import { isSupabaseConfigured } from '@/lib/supabase/config'
 import { formatAgo } from '@/lib/supabase/monitoringQueries'
 import { cn } from '@/lib/cn'
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function gapText(g: unknown): string {
   if (typeof g === 'string') return g
@@ -14,6 +17,45 @@ function gapText(g: unknown): string {
   }
   return ''
 }
+
+function gapCategory(g: unknown): string | null {
+  if (g && typeof g === 'object' && 'category' in g) {
+    const cat = (g as { category?: string }).category
+    return typeof cat === 'string' ? cat : null
+  }
+  return null
+}
+
+const GAP_CATEGORY_LABELS: Record<string, string> = {
+  numeric: 'Numeric',
+  disclosure: 'Disclosure',
+  timing: 'Timing',
+  definition: 'Definition',
+  coverage: 'Coverage',
+}
+
+function parseFinancialHighlights(raw: unknown): FinancialHighlights | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const obj = raw as Record<string, unknown>
+  const period = typeof obj.period === 'string' ? obj.period.trim() : ''
+  if (!period) return null
+  const period_end = typeof obj.period_end === 'string' ? obj.period_end.trim() || null : null
+  const metrics: FinancialHighlights['metrics'] = []
+  if (Array.isArray(obj.metrics)) {
+    for (const m of obj.metrics) {
+      if (!m || typeof m !== 'object') continue
+      const mo = m as Record<string, unknown>
+      const label = typeof mo.label === 'string' ? mo.label.trim() : ''
+      const value = typeof mo.value === 'string' ? mo.value.trim() : ''
+      if (!label || !value) continue
+      const yoy = typeof mo.yoy === 'string' ? mo.yoy.trim() || null : null
+      metrics.push({ label, value, yoy })
+    }
+  }
+  return { period, period_end, metrics }
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function CompanyResearchSection({
   slug,
@@ -44,8 +86,13 @@ export function CompanyResearchSection({
   const gaps = useMemo(() => {
     const raw = row?.factual_gaps
     if (!Array.isArray(raw)) return []
-    return raw.map(gapText).filter(Boolean).slice(0, 5)
+    return raw.filter((g) => Boolean(gapText(g))).slice(0, 5)
   }, [row?.factual_gaps])
+
+  const financialHighlights = useMemo(
+    () => parseFinancialHighlights(row?.financial_highlights),
+    [row?.financial_highlights],
+  )
 
   if (!isSupabaseConfigured()) {
     return (
@@ -61,16 +108,19 @@ export function CompanyResearchSection({
 
   const hasNarratives =
     Boolean(row?.company_narrative?.trim()) || Boolean(row?.media_narrative?.trim())
+  const hasHighlights =
+    financialHighlights !== null && financialHighlights.metrics.length > 0
   const hasHeadlines = (row?.items?.length ?? 0) > 0
 
   return (
-    <section className="mt-10 space-y-10">
+    <section className="mt-10 space-y-8">
+
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-ink">The story</h2>
           <p className="mt-1 max-w-xl text-[15px] leading-relaxed text-ink-muted">
-            How the company frames itself versus how media and analysts see it — refreshed from your
-            research cache.
+            Official disclosures versus independent coverage — gaps surfaced automatically.
           </p>
           {row?.fetched_at ? (
             <p className="mt-3 text-[13px] text-ink-subtle">
@@ -112,74 +162,154 @@ export function CompanyResearchSection({
 
       {!loading && !hasNarratives && !hasHeadlines && !error ? (
         <p className="rounded-2xl border border-divider bg-surface px-6 py-8 text-[15px] leading-relaxed text-ink-muted dark:bg-white/[0.04]">
-          No research yet. Deploy the <span className="font-mono text-[12px]">research-company</span>{' '}
-          Edge Function and tap <span className="font-medium text-ink">Refresh research</span>, or
-          run{' '}
+          No research yet. Deploy the{' '}
+          <span className="font-mono text-[12px]">research-company</span> Edge Function and tap{' '}
+          <span className="font-medium text-ink">Refresh research</span>, or run{' '}
           <span className="font-mono text-[12px]">npm run research:company -- {slug}</span>.
         </p>
       ) : null}
 
-      {/* Narratives — editorial, front and center */}
-      {hasNarratives ? (
-        <div className="grid gap-10 lg:grid-cols-2">
-          <article
-            className={cn(
-              'border-l-[3px] pl-6',
-              'border-emerald-700/70 dark:border-emerald-400/60',
-            )}
-          >
-            <p className="text-[13px] font-semibold tracking-tight text-ink">Company narrative</p>
-            <p className="mt-1 text-[13px] text-ink-subtle">From filings, IR, and official channels</p>
-            {row?.company_narrative?.trim() ? (
-              <p className="mt-4 text-[17px] leading-[1.65] text-ink">{row.company_narrative}</p>
-            ) : (
-              <p className="mt-4 text-[15px] italic leading-relaxed text-ink-muted">
-                Run refresh to generate this narrative.
-              </p>
-            )}
-          </article>
-          <article
-            className={cn(
-              'border-l-[3px] pl-6',
-              'border-slate-500/80 dark:border-slate-400/60',
-            )}
-          >
-            <p className="text-[13px] font-semibold tracking-tight text-ink">
-              Media &amp; analyst narrative
-            </p>
-            <p className="mt-1 text-[13px] text-ink-subtle">News, research, and the wider conversation</p>
-            {row?.media_narrative?.trim() ? (
-              <p className="mt-4 text-[17px] leading-[1.65] text-ink">{row.media_narrative}</p>
-            ) : (
-              <p className="mt-4 text-[15px] italic leading-relaxed text-ink-muted">
-                Run refresh to generate this narrative.
-              </p>
-            )}
-          </article>
-        </div>
-      ) : null}
-
-      {/* Factual gaps */}
+      {/* ── Factual Gaps — hero feature, surfaced first ─────────────────────── */}
       {gaps.length > 0 ? (
         <div className="rounded-2xl border border-accent/25 bg-accent-soft/40 px-6 py-6 dark:bg-accent-soft/20">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-accent">
-            Biggest factual gaps
-          </p>
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-accent" aria-hidden />
+            <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-accent">
+              Factual gaps · this quarter
+            </p>
+          </div>
           <ul className="mt-4 space-y-3">
-            {gaps.map((g, i) => (
-              <li key={i} className="flex gap-3 text-[15px] leading-relaxed text-ink">
-                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
-                <span>{g}</span>
-              </li>
-            ))}
+            {gaps.map((g, i) => {
+              const text = gapText(g)
+              const cat = gapCategory(g)
+              return (
+                <li key={i} className="flex items-start gap-3 text-[15px] leading-relaxed text-ink">
+                  {cat ? (
+                    <span className="mt-0.5 shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-accent">
+                      {GAP_CATEGORY_LABELS[cat] ?? cat}
+                    </span>
+                  ) : (
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
+                  )}
+                  <span>{text}</span>
+                </li>
+              )
+            })}
           </ul>
-          <p className="mt-4 text-[12px] text-ink-subtle">
-            Objective mismatches only — not investment advice.
-          </p>
+          <div className="mt-5 space-y-0.5">
+            <p className="text-[12px] text-ink-subtle">Objective mismatches only · no interpretation</p>
+            <p className="text-[11px] text-ink-subtle">
+              Limited independent coverage—gaps may reflect disclosure depth rather than disagreement.
+            </p>
+          </div>
         </div>
       ) : null}
 
-      {/* Headlines — supporting detail */}
+      {/* ── Key Financial Highlights ─────────────────────────────────────────── */}
+      {hasHighlights ? (
+        <div className="rounded-2xl border border-divider bg-surface px-6 py-5 dark:bg-white/[0.03]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
+              Key financial highlights
+            </p>
+            <span className="rounded-full bg-surface-raised px-2.5 py-0.5 text-[11px] font-medium text-ink-subtle ring-1 ring-inset ring-divider dark:bg-white/[0.06]">
+              {financialHighlights!.period}
+              {financialHighlights!.period_end ? ` · Ended ${financialHighlights!.period_end}` : ''}
+            </span>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+            {financialHighlights!.metrics.map((m, i) => (
+              <div key={i} className="min-w-0">
+                <p className="truncate text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
+                  {m.label}
+                </p>
+                <div className="mt-1 flex items-baseline gap-1.5">
+                  <span className="text-[18px] font-semibold tabular-nums tracking-tight text-ink">
+                    {m.value}
+                  </span>
+                  {m.yoy ? (
+                    <span
+                      className={cn(
+                        'text-[12px] font-medium tabular-nums',
+                        m.yoy.startsWith('+')
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : m.yoy.startsWith('-')
+                            ? 'text-red-500 dark:text-red-400'
+                            : 'text-ink-muted',
+                      )}
+                    >
+                      {m.yoy}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-5 text-[11px] text-ink-subtle">From official IR &amp; SEC filings only</p>
+        </div>
+      ) : null}
+
+      {/* ── Narratives — distinct visual treatments ──────────────────────────── */}
+      {hasNarratives ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+
+          {/* Company Narrative */}
+          <article className="flex flex-col rounded-xl border border-divider bg-surface p-6 dark:bg-white/[0.03]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[13px] font-semibold tracking-tight text-ink">
+                  Company Narrative
+                </p>
+                <p className="mt-0.5 text-[12px] text-ink-subtle">
+                  From IR, filings, and earnings materials
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full border border-emerald-600/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-400">
+                Official IR &amp; Filings
+              </span>
+            </div>
+            <div className="mt-1 h-px w-full bg-emerald-600/15 dark:bg-emerald-400/15" />
+            {row?.company_narrative?.trim() ? (
+              <p className="mt-4 flex-1 text-[15px] leading-[1.75] text-ink">
+                {row.company_narrative}
+              </p>
+            ) : (
+              <p className="mt-4 text-[14px] italic leading-relaxed text-ink-muted">
+                No official narrative yet — tap Refresh research.
+              </p>
+            )}
+          </article>
+
+          {/* Media & Analyst Narrative */}
+          <article className="flex flex-col rounded-xl border border-divider bg-surface p-6 dark:bg-white/[0.03]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[13px] font-semibold tracking-tight text-ink">
+                  Media &amp; Analyst Narrative
+                </p>
+                <p className="mt-0.5 text-[12px] text-ink-subtle">
+                  From third-party news and analyst coverage
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full border border-slate-400/40 bg-slate-100/60 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-slate-500/30 dark:bg-slate-500/10 dark:text-slate-400">
+                Independent Sources
+              </span>
+            </div>
+            <div className="mt-1 h-px w-full bg-slate-400/15" />
+            {row?.media_narrative?.trim() ? (
+              <p className="mt-4 flex-1 text-[15px] leading-[1.75] text-ink">
+                {row.media_narrative}
+              </p>
+            ) : (
+              <p className="mt-4 text-[14px] italic leading-relaxed text-ink-muted">
+                No independent coverage found — gaps may reflect limited third-party analysis.
+              </p>
+            )}
+          </article>
+        </div>
+      ) : null}
+
+      {/* ── Headlines — supporting detail, collapsible ───────────────────────── */}
       {hasHeadlines ? (
         <div className="border-t border-divider pt-8">
           <button
@@ -190,13 +320,15 @@ export function CompanyResearchSection({
             <div>
               <h3 className="text-[15px] font-semibold text-ink">Headlines &amp; sources</h3>
               <p className="mt-0.5 text-[13px] text-ink-subtle">
-                {(row?.items?.length ?? 0)} items in cache
+                {row?.items?.length ?? 0} items in cache
                 {companyItems.length || mediaItems.length
                   ? ` · ${companyItems.length} company · ${mediaItems.length} media`
                   : ''}
               </p>
             </div>
-            <span className="text-[13px] font-medium text-accent">{headlinesOpen ? 'Hide' : 'Show'}</span>
+            <span className="text-[13px] font-medium text-accent">
+              {headlinesOpen ? 'Hide' : 'Show'}
+            </span>
           </button>
 
           {headlinesOpen && row ? (
