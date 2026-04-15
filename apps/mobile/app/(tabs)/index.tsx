@@ -9,7 +9,7 @@
  */
 
 import { useFocusEffect, useRouter } from 'expo-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Keyboard,
@@ -35,8 +35,9 @@ import { useAuth } from '@/contexts/AuthContext'
 import { BRAND } from '@/constants/brand'
 import { font, radius, space } from '@/constants/theme'
 import { buildCompanyLogoCandidates } from '@/lib/companyLogo'
-import { formatAgo, formatUnknownError } from '@/lib/format'
+import { formatAgo, formatUnknownError, getGreeting } from '@/lib/format'
 import { searchCompanies, type SearchCompanyRow } from '@/lib/companySearch'
+import { useWatchlistDigest } from '@/hooks/useWatchlistDigest'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import {
   deleteWatchlistSlug,
@@ -112,6 +113,81 @@ function CompanyCard({ company, research, logoCandidates, onPress, onRemove, isL
         <Text style={[styles.removeBtnText, { color: BRAND.onNavySubtle }]}>✕</Text>
       </Pressable>
     </Pressable>
+  )
+}
+
+// ─── Digest card ──────────────────────────────────────────────────────────────
+
+type DigestCardProps = {
+  digest: import('@/lib/watchlistDigest').WatchlistDigestRow | null
+  loading: boolean
+  onRefresh: () => void
+}
+
+function DigestCard({ digest, loading, onRefresh }: DigestCardProps) {
+  if (loading) {
+    return (
+      <View style={styles.digestShimmer}>
+        <Text style={[styles.digestShimmerText, { color: BRAND.onNavySubtle }]}>
+          Loading your summary…
+        </Text>
+      </View>
+    )
+  }
+
+  // Generating but no text yet — first-time generation in flight
+  if (digest?.is_generating && !digest.digest_text) {
+    return (
+      <View style={[styles.digestPrompt, { borderColor: BRAND.stroke }]}>
+        <Text style={[styles.digestPromptText, { color: BRAND.onNavyMuted }]}>
+          Preparing your portfolio summary…
+        </Text>
+      </View>
+    )
+  }
+
+  // No digest and not generating — prompt to generate
+  if (!digest?.digest_text) {
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          styles.digestPrompt,
+          { borderColor: BRAND.stroke, opacity: pressed ? 0.7 : 1 },
+        ]}
+        onPress={onRefresh}
+        accessibilityLabel="Generate portfolio summary"
+      >
+        <Text style={[styles.digestPromptText, { color: BRAND.onNavyMuted }]}>
+          Tap to generate your portfolio summary
+        </Text>
+      </Pressable>
+    )
+  }
+
+  // Has digest text
+  return (
+    <BlurView intensity={28} tint="dark" style={styles.digestCard}>
+      <View style={[styles.digestCardInner, { backgroundColor: BRAND.glassNavy, borderColor: BRAND.stroke }]}>
+        <Text
+          style={[styles.digestText, { color: BRAND.onNavyMuted }]}
+          numberOfLines={4}
+        >
+          {digest.digest_text}
+        </Text>
+        <View style={styles.digestFooter}>
+          <Text style={[styles.digestMeta, { color: BRAND.onNavySubtle }]}>
+            {digest.is_generating
+              ? 'Updating…'
+              : `Updated ${formatAgo(digest.generated_at)}`}
+          </Text>
+          {!digest.is_generating ? (
+            <Pressable onPress={onRefresh} hitSlop={10} accessibilityLabel="Refresh summary">
+              <Text style={[styles.digestRefreshBtn, { color: BRAND.tealLight }]}>Refresh</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+    </BlurView>
   )
 }
 
@@ -328,6 +404,13 @@ export default function WatchlistScreen() {
   const [error, setError] = useState<string | null>(null)
   const [showSearch, setShowSearch] = useState(false)
 
+  const slugs = useMemo(() => companies.map((c) => c.slug), [companies])
+  const {
+    digest,
+    loading: digestLoading,
+    refresh: refreshDigest,
+  } = useWatchlistDigest(user?.id ?? null, slugs)
+
   const load = useCallback(async () => {
     if (!user) {
       setCompanies([])
@@ -414,7 +497,14 @@ export default function WatchlistScreen() {
           <Ionicons name="menu-outline" size={26} color={BRAND.tealLight} />
         </Pressable>
         <VerityMark size={28} />
-        <Text style={[styles.headerTitle, { color: BRAND.onNavy }]}>Watchlist</Text>
+        <View style={styles.headerCenter}>
+          <Text style={[styles.headerTitle, { color: BRAND.onNavy }]}>Watchlist</Text>
+          {user ? (
+            <Text style={[styles.headerGreeting, { color: BRAND.onNavySubtle }]} numberOfLines={1}>
+              {getGreeting(user.email)}
+            </Text>
+          ) : null}
+        </View>
         <Text style={[styles.companyCount, { color: BRAND.onNavySubtle }]}>
           {companies.length}/{WATCHLIST_CAP}
         </Text>
@@ -423,6 +513,17 @@ export default function WatchlistScreen() {
       {error ? (
         <View style={[styles.errBanner, { backgroundColor: 'rgba(185, 28, 28, 0.25)' }]}>
           <Text style={[styles.err, { color: BRAND.onNavy }]}>{error}</Text>
+        </View>
+      ) : null}
+
+      {/* Digest summary — shown once companies are loaded */}
+      {!loading && companies.length > 0 ? (
+        <View style={styles.digestArea}>
+          <DigestCard
+            digest={digest}
+            loading={digestLoading}
+            onRefresh={() => void refreshDigest()}
+          />
         </View>
       ) : null}
 
@@ -519,8 +620,48 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   menuBtn: { padding: 4, marginRight: 2 },
-  headerTitle: { flex: 1, fontFamily: font.semi, fontSize: 18, letterSpacing: -0.3 },
+  headerCenter: { flex: 1, minWidth: 0 },
+  headerTitle: { fontFamily: font.semi, fontSize: 18, letterSpacing: -0.3 },
+  headerGreeting: { fontFamily: font.regular, fontSize: 12, marginTop: 1 },
   companyCount: { fontFamily: font.regular, fontSize: 12 },
+
+  digestArea: {
+    marginHorizontal: space.lg,
+    marginTop: space.md,
+    marginBottom: space.xs,
+  },
+  digestShimmer: {
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+  },
+  digestShimmerText: { fontFamily: font.regular, fontSize: 13 },
+  digestPrompt: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.md,
+    paddingVertical: space.md,
+    paddingHorizontal: space.md,
+  },
+  digestPromptText: { fontFamily: font.regular, fontSize: 13, lineHeight: 18 },
+  digestCard: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  digestCardInner: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.md,
+    paddingVertical: space.md,
+    paddingHorizontal: space.md,
+    gap: space.sm,
+  },
+  digestText: { fontFamily: font.regular, fontSize: 13, lineHeight: 19 },
+  digestFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: space.xs,
+  },
+  digestMeta: { fontFamily: font.regular, fontSize: 11 },
+  digestRefreshBtn: { fontFamily: font.medium, fontSize: 12 },
   errBanner: {
     marginHorizontal: space.lg,
     marginTop: space.sm,

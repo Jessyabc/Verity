@@ -32,6 +32,9 @@ export function useWatchlistDigest(userId: string | null, slugs: string[]) {
   const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null)
   const refreshRef   = useRef<ReturnType<typeof setInterval> | null>(null)
   const triggeredRef = useRef(false)
+  // Keep a live reference to the current slugs so manualRefresh never closes over stale values
+  const slugsRef     = useRef(slugs)
+  useEffect(() => { slugsRef.current = slugs }, [slugs])
 
   const stopPoll = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
@@ -122,5 +125,17 @@ export function useWatchlistDigest(userId: string | null, slugs: string[]) {
     return () => sub.remove()
   }, [userId, slugs.join('|'), checkAndRefresh]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { digest, loading, error }
+  // Manual refresh: fire regeneration, optimistically mark as generating, start polling
+  const manualRefresh = useCallback(async () => {
+    if (!userId || slugsRef.current.length === 0) return
+    try {
+      await triggerDigestRegeneration(slugsRef.current)
+      setDigest((prev) => (prev ? { ...prev, is_generating: true } : prev))
+      startPoll(userId)
+    } catch (e) {
+      setError(formatUnknownError(e))
+    }
+  }, [userId, startPoll])
+
+  return { digest, loading, error, refresh: manualRefresh }
 }
