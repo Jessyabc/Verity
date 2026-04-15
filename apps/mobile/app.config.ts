@@ -72,6 +72,11 @@ const config: ExpoConfig = {
         origin: process.env.EXPO_PUBLIC_EXPO_ROUTER_ORIGIN ?? 'https://expo.dev',
       },
     ],
+    // RevenueCat — handles StoreKit / in-app purchases.
+    // Set EXPO_PUBLIC_REVENUECAT_API_KEY in EAS secrets (and locally in .env.local).
+    // Requires a native dev build — does NOT work in Expo Go.
+    // Run: eas build --platform ios --profile development
+    'react-native-purchases',
   ],
   experiments: {
     typedRoutes: true,

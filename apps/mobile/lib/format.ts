@@ -1,4 +1,26 @@
 /**
+ * Returns a time-of-day greeting, optionally personalised with the user's first name
+ * derived from their email address (e.g. "alex@..." → "Good morning, Alex").
+ * Falls back to a plain greeting if the local-part looks like a UUID or random string.
+ */
+export function getGreeting(email: string | null | undefined): string {
+  const hour = new Date().getHours()
+  const timeGreeting =
+    hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+
+  if (!email) return timeGreeting
+
+  const local = email.split('@')[0] ?? ''
+  // Skip derivation for UUIDs, numeric strings, or suspiciously long identifiers
+  if (local.length > 20 || !/^[a-zA-Z]/.test(local)) return timeGreeting
+
+  // Take segment before the first separator (.  _  -)
+  const first = local.split(/[._-]/)[0] ?? local
+  const name = first.charAt(0).toUpperCase() + first.slice(1).toLowerCase()
+  return `${timeGreeting}, ${name}`
+}
+
+/**
  * Supabase `PostgrestError` and some API errors are plain objects, not `Error` instances.
  * Using `String(e)` shows "[object Object]" in UI — use this for user-visible messages.
  */

@@ -19,7 +19,9 @@ import { SidebarProvider } from '@/components/Sidebar'
 import { useColorScheme } from '@/components/useColorScheme'
 import { verityNavigationTheme } from '@/constants/navigationTheme'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { EntitlementProvider } from '@/contexts/EntitlementContext'
 import { ThemePreferenceProvider } from '@/contexts/ThemePreferenceContext'
+import { useEntitlementGate } from '@/hooks/useEntitlementGate'
 import { useProtectedSession } from '@/hooks/useProtectedSession'
 
 export { ErrorBoundary } from 'expo-router'
@@ -54,7 +56,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemePreferenceProvider>
         <AuthProvider>
-          <RootNavigationShell />
+          <EntitlementProvider>
+            <RootNavigationShell />
+          </EntitlementProvider>
         </AuthProvider>
       </ThemePreferenceProvider>
     </GestureHandlerRootView>
@@ -75,6 +79,7 @@ function RootNavigationShell() {
 
 function AuthAwareStack() {
   useProtectedSession()
+  useEntitlementGate()
   const stackScreenGesture = {
     gestureEnabled: true,
     fullScreenGestureEnabled: true,
@@ -124,6 +129,15 @@ function AuthAwareStack() {
             headerShown: true,
             headerBackTitle: 'Conversations',
             ...stackScreenGesture,
+          }}
+        />
+        <Stack.Screen
+          name="paywall"
+          options={{
+            presentation: 'fullScreenModal',
+            headerShown: false,
+            // Not dismissible — user must subscribe or restore to exit
+            gestureEnabled: false,
           }}
         />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
