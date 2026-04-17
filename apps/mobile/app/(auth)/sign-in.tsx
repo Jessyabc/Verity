@@ -17,8 +17,8 @@ import { StatusBar } from 'expo-status-bar'
 
 import { VerityWordmark } from '@/components/VerityWordmark'
 import { useAuth } from '@/contexts/AuthContext'
-import { BRAND } from '@/constants/brand'
 import { font, radius, space } from '@/constants/theme'
+import { useAdaptiveBrand } from '@/hooks/useAdaptiveBrand'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { openUrl } from '@/lib/openUrl'
@@ -27,6 +27,7 @@ const PRIVACY_URL = 'https://verity.so/privacy'
 const TERMS_URL = 'https://verity.so/terms'
 
 export default function SignInScreen() {
+  const brand = useAdaptiveBrand()
   const palette = useVerityPalette()
   const { signInWithPassword, signUpWithPassword, signInWithMagicLink } = useAuth()
   const [email, setEmail] = useState('')
@@ -85,10 +86,10 @@ export default function SignInScreen() {
 
   if (!isSupabaseConfigured()) {
     return (
-      <View style={[styles.center, { backgroundColor: BRAND.navy }]}>
+      <View style={[styles.center, { backgroundColor: brand.navy }]}>
         <StatusBar style="light" />
-        <Text style={[styles.title, { color: BRAND.onNavy }]}>Configure Supabase</Text>
-        <Text style={[styles.hint, { color: BRAND.onNavyMuted }]}>
+        <Text style={[styles.title, { color: brand.onNavy }]}>Configure Supabase</Text>
+        <Text style={[styles.hint, { color: brand.onNavyMuted }]}>
           Copy apps/mobile/.env.example to apps/mobile/.env and set EXPO_PUBLIC_SUPABASE_URL and
           EXPO_PUBLIC_SUPABASE_ANON_KEY, then restart Expo.
         </Text>
@@ -97,7 +98,7 @@ export default function SignInScreen() {
   }
 
   return (
-    <View style={[styles.flex, { backgroundColor: BRAND.navy }]}>
+    <View style={[styles.flex, { backgroundColor: brand.navy }]}>
       <StatusBar style="light" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -110,21 +111,21 @@ export default function SignInScreen() {
         >
           <View style={styles.brandBlock}>
             <VerityWordmark height={36} />
-            <Text style={[styles.tagline, { color: BRAND.tealLight }]}>
+            <Text style={[styles.tagline, { color: brand.tealLight }]}>
               Company · Media · The Gap
             </Text>
           </View>
 
-          <Text style={[styles.lead, { color: BRAND.onNavyMuted }]}>
+          <Text style={[styles.lead, { color: brand.onNavyMuted }]}>
             Sign in to monitor filings, press releases, and investor relations from your watchlist
             companies.
           </Text>
 
-          <BlurPill>
+          <BlurPill brand={brand}>
             <TextInput
-              style={[styles.input, { color: BRAND.onNavy }]}
+              style={[styles.input, { color: brand.onNavy }]}
               placeholder="you@company.com"
-              placeholderTextColor={BRAND.onNavySubtle}
+              placeholderTextColor={brand.onNavySubtle}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="email-address"
@@ -133,11 +134,11 @@ export default function SignInScreen() {
               editable={!busy}
             />
           </BlurPill>
-          <BlurPill>
+          <BlurPill brand={brand}>
             <TextInput
-              style={[styles.input, { color: BRAND.onNavy }]}
+              style={[styles.input, { color: brand.onNavy }]}
               placeholder="Password"
-              placeholderTextColor={BRAND.onNavySubtle}
+              placeholderTextColor={brand.onNavySubtle}
               secureTextEntry
               autoCapitalize="none"
               autoCorrect={false}
@@ -150,15 +151,15 @@ export default function SignInScreen() {
           <Pressable
             style={({ pressed }) => [
               styles.primaryBtn,
-              { backgroundColor: BRAND.tealDark, opacity: pressed || busy ? 0.85 : 1 },
+              { backgroundColor: brand.tealDark, opacity: pressed || busy ? 0.85 : 1 },
             ]}
             onPress={() => void onSignIn()}
             disabled={busy}
           >
             {busy ? (
-              <ActivityIndicator color={BRAND.navy} />
+              <ActivityIndicator color="#ffffff" />
             ) : (
-              <Text style={[styles.primaryBtnLabel, { color: BRAND.navy }]}>
+              <Text style={styles.primaryBtnLabel}>
                 Sign in with password
               </Text>
             )}
@@ -169,11 +170,11 @@ export default function SignInScreen() {
             onPress={() => void onSignUp()}
             disabled={busy}
           >
-            <Text style={[styles.secondaryLabel, { color: BRAND.tealLight }]}>Create account</Text>
+            <Text style={[styles.secondaryLabel, { color: brand.tealLight }]}>Create account</Text>
           </Pressable>
 
           {message ? (
-            <Text style={[styles.success, { color: BRAND.tealLight }]}>{message}</Text>
+            <Text style={[styles.success, { color: brand.tealLight }]}>{message}</Text>
           ) : null}
           {error ? <Text style={[styles.err, { color: palette.danger }]}>{error}</Text> : null}
 
@@ -182,43 +183,43 @@ export default function SignInScreen() {
             onPress={() => setShowMagicLink((v) => !v)}
             disabled={busy}
           >
-            <Text style={[styles.linkText, { color: BRAND.onNavySubtle }]}>
+            <Text style={[styles.linkText, { color: brand.onNavySubtle }]}>
               {showMagicLink ? '▼ Hide magic link option' : '▶ Sign in with magic link instead'}
             </Text>
           </Pressable>
 
           {showMagicLink ? (
-            <BlurPill style={styles.magicBox}>
-              <Text style={[styles.magicHint, { color: BRAND.onNavyMuted }]}>
+            <BlurPill brand={brand} style={styles.magicBox}>
+              <Text style={[styles.magicHint, { color: brand.onNavyMuted }]}>
                 {"We'll send a sign-in link to your email. Tap it on this device to open the app and sign in instantly — no password needed."}
               </Text>
               <Pressable
                 style={({ pressed }) => [
                   styles.outlineBtn,
-                  { borderColor: BRAND.tealLight, opacity: pressed || busy ? 0.85 : 1 },
+                  { borderColor: brand.tealLight, opacity: pressed || busy ? 0.85 : 1 },
                 ]}
                 onPress={() => void onMagicLink()}
                 disabled={busy}
               >
-                <Text style={[styles.outlineBtnText, { color: BRAND.tealLight }]}>
+                <Text style={[styles.outlineBtnText, { color: brand.tealLight }]}>
                   Send magic link
                 </Text>
               </Pressable>
             </BlurPill>
           ) : null}
 
-          <Text style={[styles.small, { color: BRAND.onNavySubtle }]}>
+          <Text style={[styles.small, { color: brand.onNavySubtle }]}>
             Verity monitors official company sources only. Content is for informational purposes and
             is not investment advice.
           </Text>
 
           <View style={styles.legalRow}>
             <Pressable onPress={() => void openUrl(PRIVACY_URL)}>
-              <Text style={[styles.legalLink, { color: BRAND.tealLight }]}>Privacy Policy</Text>
+              <Text style={[styles.legalLink, { color: brand.tealLight }]}>Privacy Policy</Text>
             </Pressable>
-            <Text style={[styles.legalSep, { color: BRAND.onNavySubtle }]}>·</Text>
+            <Text style={[styles.legalSep, { color: brand.onNavySubtle }]}>·</Text>
             <Pressable onPress={() => void openUrl(TERMS_URL)}>
-              <Text style={[styles.legalLink, { color: BRAND.tealLight }]}>Terms of Use</Text>
+              <Text style={[styles.legalLink, { color: brand.tealLight }]}>Terms of Use</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -230,13 +231,15 @@ export default function SignInScreen() {
 function BlurPill({
   children,
   style,
+  brand,
 }: {
   children: ReactNode
   style?: StyleProp<ViewStyle>
+  brand: ReturnType<typeof useAdaptiveBrand>
 }) {
   return (
-    <BlurView intensity={40} tint="dark" style={[styles.fieldShell, style]}>
-      <View style={[styles.fieldInner, { backgroundColor: BRAND.glassNavy }]}>{children}</View>
+    <BlurView intensity={40} tint={brand.blurTint} style={[styles.fieldShell, { borderColor: brand.stroke }, style]}>
+      <View style={[styles.fieldInner, { backgroundColor: brand.glassNavy }]}>{children}</View>
     </BlurView>
   )
 }
@@ -280,7 +283,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: space.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: BRAND.stroke,
+    borderColor: 'rgba(242, 246, 250, 0.12)',
   },
   fieldInner: {
     borderRadius: radius.md - 1,
@@ -301,6 +304,7 @@ const styles = StyleSheet.create({
   primaryBtnLabel: {
     fontFamily: font.semi,
     fontSize: 16,
+    color: '#ffffff',
   },
   secondaryPress: {
     marginTop: space.lg,

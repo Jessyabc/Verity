@@ -20,8 +20,8 @@ import { CompanyLogo } from '@/components/CompanyLogo'
 import { useSidebar } from '@/components/Sidebar'
 import { VerityMark } from '@/components/VerityMark'
 import { useAuth } from '@/contexts/AuthContext'
-import { BRAND } from '@/constants/brand'
 import { font, radius, space } from '@/constants/theme'
+import { useAdaptiveBrand } from '@/hooks/useAdaptiveBrand'
 import { buildCompanyLogoCandidates } from '@/lib/companyLogo'
 import { formatAgo, formatUnknownError } from '@/lib/format'
 import { openUrl } from '@/lib/openUrl'
@@ -95,29 +95,31 @@ function buildSections(
 
 function HeadlineRow({
   item,
+  brand,
   onUnsave,
 }: {
   item: SavedHeadlineRow
+  brand: ReturnType<typeof useAdaptiveBrand>
   onUnsave: (id: string) => void
 }) {
   return (
-    <View style={[styles.headlineRow, { borderTopColor: BRAND.stroke }]}>
+    <View style={[styles.headlineRow, { borderTopColor: brand.stroke }]}>
       <Pressable style={styles.headlineBody} onPress={() => void openUrl(item.url)}>
-        <Text style={[styles.headlineTitle, { color: BRAND.tealLight }]} numberOfLines={2}>
+        <Text style={[styles.headlineTitle, { color: brand.tealLight }]} numberOfLines={2}>
           {item.title}
         </Text>
         {item.snippet ? (
-          <Text style={[styles.headlineSnippet, { color: BRAND.onNavyMuted }]} numberOfLines={2}>
+          <Text style={[styles.headlineSnippet, { color: brand.onNavyMuted }]} numberOfLines={2}>
             {item.snippet}
           </Text>
         ) : null}
-        <Text style={[styles.headlineMeta, { color: BRAND.onNavySubtle }]} numberOfLines={1}>
+        <Text style={[styles.headlineMeta, { color: brand.onNavySubtle }]} numberOfLines={1}>
           {item.source ?? item.url}
           {item.saved_at ? ` · ${formatAgo(item.saved_at)}` : ''}
         </Text>
       </Pressable>
       <Pressable style={styles.unsaveBtn} onPress={() => onUnsave(item.id)} hitSlop={10}>
-        <Text style={[styles.unsaveIcon, { color: BRAND.tealLight }]}>✦</Text>
+        <Text style={[styles.unsaveIcon, { color: brand.tealLight }]}>✦</Text>
       </Pressable>
     </View>
   )
@@ -125,22 +127,24 @@ function HeadlineRow({
 
 function NarrativeBlock({
   group,
+  brand,
   onUnsave,
 }: {
   group: NarrativeGroup
+  brand: ReturnType<typeof useAdaptiveBrand>
   onUnsave: (id: string) => void
 }) {
-  const dotColor = group.type === 'company' ? BRAND.tealDark : BRAND.tealLight
+  const dotColor = group.type === 'company' ? brand.tealDark : brand.tealLight
   return (
     <View style={styles.narrativeBlock}>
       <View style={styles.narrativeHeader}>
         <View style={[styles.narrativeDot, { backgroundColor: dotColor }]} />
-        <Text style={[styles.narrativeLabel, { color: BRAND.onNavySubtle }]}>
+        <Text style={[styles.narrativeLabel, { color: brand.onNavySubtle }]}>
           {group.label.toUpperCase()}
         </Text>
       </View>
       {group.items.map((item) => (
-        <HeadlineRow key={item.id} item={item} onUnsave={onUnsave} />
+        <HeadlineRow key={item.id} item={item} brand={brand} onUnsave={onUnsave} />
       ))}
     </View>
   )
@@ -151,6 +155,7 @@ export default function SavedScreen() {
   const insets = useSafeAreaInsets()
   const { user } = useAuth()
   const { open: openSidebar } = useSidebar()
+  const brand = useAdaptiveBrand()
 
   const [sections, setSections] = useState<CompanySection[]>([])
   const [loading, setLoading] = useState(true)
@@ -211,33 +216,33 @@ export default function SavedScreen() {
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: BRAND.navy }]}>
+    <View style={[styles.screen, { backgroundColor: brand.navy }]}>
       <View
         style={[
           styles.header,
-          { paddingTop: insets.top + space.md, borderBottomColor: BRAND.stroke },
+          { paddingTop: insets.top + space.md, borderBottomColor: brand.stroke },
         ]}
       >
         <Pressable style={styles.menuBtn} onPress={openSidebar} hitSlop={10} accessibilityLabel="Open menu">
-          <Ionicons name="menu-outline" size={26} color={BRAND.tealLight} />
+          <Ionicons name="menu-outline" size={26} color={brand.tealLight} />
         </Pressable>
         <VerityMark size={28} />
-        <Text style={[styles.headerTitle, { color: BRAND.onNavy }]}>Saved Links</Text>
+        <Text style={[styles.headerTitle, { color: brand.onNavy }]}>Saved Links</Text>
         <View style={{ width: 8 }} />
       </View>
 
       {error ? (
         <View style={[styles.errBanner, { backgroundColor: 'rgba(185, 28, 28, 0.25)' }]}>
-          <Text style={[styles.err, { color: BRAND.onNavy }]}>{error}</Text>
+          <Text style={[styles.err, { color: brand.onNavy }]}>{error}</Text>
         </View>
       ) : null}
 
       {loading ? (
-        <ActivityIndicator color={BRAND.tealLight} size="large" style={{ marginTop: space.xl }} />
+        <ActivityIndicator color={brand.tealLight} size="large" style={{ marginTop: space.xl }} />
       ) : sections.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={[styles.emptyTitle, { color: BRAND.onNavy }]}>No saved links yet</Text>
-          <Text style={[styles.emptyBody, { color: BRAND.onNavyMuted }]}>
+          <Text style={[styles.emptyTitle, { color: brand.onNavy }]}>No saved links yet</Text>
+          <Text style={[styles.emptyBody, { color: brand.onNavyMuted }]}>
             Open a company profile, run research, and tap ✧ on any headline to save it here. Links are grouped by
             company and narrative type.
           </Text>
@@ -265,22 +270,22 @@ export default function SavedScreen() {
                 tone="brand"
               />
               <View style={styles.sectionHeaderText}>
-                <Text style={[styles.sectionTitle, { color: BRAND.onNavy }]} numberOfLines={1}>
+                <Text style={[styles.sectionTitle, { color: brand.onNavy }]} numberOfLines={1}>
                   {section.companyName}
                 </Text>
                 {section.ticker ? (
-                  <Text style={[styles.sectionTicker, { color: BRAND.onNavyMuted }]} numberOfLines={1}>
+                  <Text style={[styles.sectionTicker, { color: brand.onNavyMuted }]} numberOfLines={1}>
                     {section.ticker}
                   </Text>
                 ) : null}
               </View>
-              <Ionicons name="chevron-forward" size={20} color={BRAND.tealLight} />
+              <Ionicons name="chevron-forward" size={20} color={brand.tealLight} />
             </Pressable>
           )}
           renderItem={({ item: group }) => (
-            <BlurView intensity={40} tint="dark" style={styles.cardBlur}>
-              <View style={[styles.cardInner, { backgroundColor: BRAND.glassNavy }]}>
-                <NarrativeBlock group={group} onUnsave={handleUnsave} />
+            <BlurView intensity={40} tint={brand.blurTint} style={styles.cardBlur}>
+              <View style={[styles.cardInner, { backgroundColor: brand.glassNavy }]}>
+                <NarrativeBlock group={group} brand={brand} onUnsave={handleUnsave} />
               </View>
             </BlurView>
           )}

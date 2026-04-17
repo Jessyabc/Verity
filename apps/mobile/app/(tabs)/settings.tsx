@@ -20,8 +20,8 @@ import { useSidebar } from '@/components/Sidebar'
 import { VerityMark } from '@/components/VerityMark'
 import { useAuth } from '@/contexts/AuthContext'
 import { useThemePreference, type ThemePreference } from '@/contexts/ThemePreferenceContext'
-import { BRAND } from '@/constants/brand'
-import { font, radius, space } from '@/constants/theme'
+import { font, paletteDark, radius, space } from '@/constants/theme'
+import { useAdaptiveBrand } from '@/hooks/useAdaptiveBrand'
 import { formatUnknownError } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 
@@ -90,22 +90,24 @@ export default function AccountSettingsScreen() {
     ])
   }
 
+  const brand = useAdaptiveBrand()
+
   const displayInitial =
     (username.trim()[0] ?? user?.email?.[0] ?? '?').toUpperCase()
 
   return (
-    <View style={[styles.screen, { backgroundColor: BRAND.navy }]}>
+    <View style={[styles.screen, { backgroundColor: brand.navy }]}>
       <View
         style={[
           styles.header,
-          { paddingTop: insets.top + space.md, borderBottomColor: BRAND.stroke },
+          { paddingTop: insets.top + space.md, borderBottomColor: brand.stroke },
         ]}
       >
         <Pressable style={styles.menuBtn} onPress={openSidebar} hitSlop={10} accessibilityLabel="Open menu">
-          <Ionicons name="menu-outline" size={26} color={BRAND.tealLight} />
+          <Ionicons name="menu-outline" size={26} color={brand.tealLight} />
         </Pressable>
         <VerityMark size={28} />
-        <Text style={[styles.headerTitle, { color: BRAND.onNavy }]}>Account</Text>
+        <Text style={[styles.headerTitle, { color: brand.onNavy }]}>Account</Text>
         <View style={{ width: 8 }} />
       </View>
 
@@ -119,14 +121,14 @@ export default function AccountSettingsScreen() {
       >
         <View style={styles.avatarSection}>
           <View style={[styles.avatar, { backgroundColor: 'rgba(92, 154, 154, 0.25)' }]}>
-            <Text style={[styles.avatarLetter, { color: BRAND.onNavy }]}>{displayInitial}</Text>
+            <Text style={[styles.avatarLetter, { color: brand.onNavy }]}>{displayInitial}</Text>
           </View>
-          <Text style={[styles.email, { color: BRAND.onNavyMuted }]}>{user?.email ?? '—'}</Text>
+          <Text style={[styles.email, { color: brand.onNavyMuted }]}>{user?.email ?? '—'}</Text>
         </View>
 
-        <View style={[styles.section, { borderColor: BRAND.stroke }]}>
-          <Text style={[styles.sectionKicker, { color: BRAND.tealLight }]}>PROFILE</Text>
-          <Text style={[styles.label, { color: BRAND.onNavySubtle }]}>Username</Text>
+        <View style={[styles.section, { borderColor: brand.stroke }]}>
+          <Text style={[styles.sectionKicker, { color: brand.tealLight }]}>PROFILE</Text>
+          <Text style={[styles.label, { color: brand.onNavySubtle }]}>Username</Text>
           <TextInput
             value={username}
             onChangeText={(t) => {
@@ -134,13 +136,13 @@ export default function AccountSettingsScreen() {
               setNameSaved(false)
             }}
             placeholder="How should we greet you?"
-            placeholderTextColor={BRAND.onNavyMuted}
+            placeholderTextColor={brand.onNavyMuted}
             style={[
               styles.input,
               {
-                color: BRAND.onNavy,
-                borderColor: BRAND.stroke,
-                backgroundColor: BRAND.glassNavy,
+                color: brand.onNavy,
+                borderColor: brand.stroke,
+                backgroundColor: brand.glassNavy,
               },
             ]}
             autoCapitalize="words"
@@ -149,30 +151,30 @@ export default function AccountSettingsScreen() {
             editable={!savingName}
           />
           {nameError ? (
-            <Text style={[styles.inlineErr, { color: '#f87171' }]}>{nameError}</Text>
+            <Text style={[styles.inlineErr, { color: paletteDark.danger }]}>{nameError}</Text>
           ) : null}
           {nameSaved ? (
-            <Text style={[styles.inlineOk, { color: BRAND.tealLight }]}>Saved</Text>
+            <Text style={[styles.inlineOk, { color: brand.tealLight }]}>Saved</Text>
           ) : null}
           <Pressable
             style={({ pressed }) => [
               styles.primaryBtn,
-              { backgroundColor: BRAND.tealDark, opacity: pressed || savingName ? 0.85 : 1 },
+              { backgroundColor: brand.tealDark, opacity: pressed || savingName ? 0.85 : 1 },
             ]}
             onPress={() => void saveUsername()}
             disabled={savingName}
           >
             {savingName ? (
-              <ActivityIndicator color={BRAND.onNavy} />
+              <ActivityIndicator color="#ffffff" />
             ) : (
               <Text style={styles.primaryBtnText}>Save username</Text>
             )}
           </Pressable>
         </View>
 
-        <View style={[styles.section, { borderColor: BRAND.stroke }]}>
-          <Text style={[styles.sectionKicker, { color: BRAND.tealLight }]}>APPEARANCE</Text>
-          <View style={[styles.segmentWrap, { backgroundColor: BRAND.glassNavy, borderColor: BRAND.stroke }]}>
+        <View style={[styles.section, { borderColor: brand.stroke }]}>
+          <Text style={[styles.sectionKicker, { color: brand.tealLight }]}>APPEARANCE</Text>
+          <View style={[styles.segmentWrap, { backgroundColor: brand.glassNavy, borderColor: brand.stroke }]}>
             {APPEARANCE_OPTIONS.map(({ value, label }) => {
               const active = preference === value
               return (
@@ -187,7 +189,7 @@ export default function AccountSettingsScreen() {
                   <Text
                     style={[
                       styles.segmentText,
-                      { color: active ? BRAND.onNavy : BRAND.onNavyMuted },
+                      { color: active ? brand.onNavy : brand.onNavyMuted },
                     ]}
                   >
                     {label}
@@ -198,37 +200,37 @@ export default function AccountSettingsScreen() {
           </View>
         </View>
 
-        <View style={[styles.section, { borderColor: BRAND.stroke }]}>
-          <Text style={[styles.sectionKicker, { color: BRAND.tealLight }]}>PLAN & RESEARCH</Text>
-          <View style={[styles.row, { borderTopColor: BRAND.stroke }]}>
-            <Text style={[styles.rowLabel, { color: BRAND.onNavy }]}>Plan</Text>
-            <Text style={[styles.rowValue, { color: BRAND.onNavyMuted }]}>Subscriber</Text>
+        <View style={[styles.section, { borderColor: brand.stroke }]}>
+          <Text style={[styles.sectionKicker, { color: brand.tealLight }]}>PLAN & RESEARCH</Text>
+          <View style={[styles.row, { borderTopColor: brand.stroke }]}>
+            <Text style={[styles.rowLabel, { color: brand.onNavy }]}>Plan</Text>
+            <Text style={[styles.rowValue, { color: brand.onNavyMuted }]}>Subscriber</Text>
           </View>
-          <View style={[styles.row, { borderTopColor: BRAND.stroke }]}>
-            <Text style={[styles.rowLabel, { color: BRAND.onNavy }]}>Watchlist cap</Text>
-            <Text style={[styles.rowValue, { color: BRAND.onNavyMuted }]}>15 companies</Text>
+          <View style={[styles.row, { borderTopColor: brand.stroke }]}>
+            <Text style={[styles.rowLabel, { color: brand.onNavy }]}>Watchlist cap</Text>
+            <Text style={[styles.rowValue, { color: brand.onNavyMuted }]}>15 companies</Text>
           </View>
-          <View style={[styles.row, { borderTopColor: BRAND.stroke }]}>
-            <Text style={[styles.rowLabel, { color: BRAND.onNavy }]}>Daily refresh</Text>
-            <Text style={[styles.rowValue, { color: BRAND.onNavyMuted }]}>8:00 PM</Text>
+          <View style={[styles.row, { borderTopColor: brand.stroke }]}>
+            <Text style={[styles.rowLabel, { color: brand.onNavy }]}>Daily refresh</Text>
+            <Text style={[styles.rowValue, { color: brand.onNavyMuted }]}>8:00 PM</Text>
           </View>
-          <View style={[styles.row, { borderTopColor: BRAND.stroke }]}>
-            <Text style={[styles.rowLabel, { color: BRAND.onNavy }]}>Model</Text>
-            <Text style={[styles.rowValue, { color: BRAND.onNavyMuted }]}>Perplexity sonar-pro</Text>
+          <View style={[styles.row, { borderTopColor: brand.stroke }]}>
+            <Text style={[styles.rowLabel, { color: brand.onNavy }]}>Model</Text>
+            <Text style={[styles.rowValue, { color: brand.onNavyMuted }]}>Perplexity sonar-pro</Text>
           </View>
         </View>
 
         <Pressable
           style={({ pressed }) => [
             styles.signOutBtn,
-            { borderColor: '#f87171', opacity: pressed ? 0.88 : 1 },
+            { borderColor: paletteDark.danger, opacity: pressed ? 0.88 : 1 },
           ]}
           onPress={handleSignOut}
         >
-          <Text style={[styles.signOutText, { color: '#f87171' }]}>Sign out</Text>
+          <Text style={[styles.signOutText, { color: paletteDark.danger }]}>Sign out</Text>
         </Pressable>
 
-        <Text style={[styles.disclaimer, { color: BRAND.onNavySubtle }]}>
+        <Text style={[styles.disclaimer, { color: brand.onNavySubtle }]}>
           Verity provides factual research only. Nothing here constitutes investment advice. Always verify with
           primary sources.
         </Text>
@@ -294,7 +296,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     justifyContent: 'center',
   },
-  primaryBtnText: { fontFamily: font.semi, fontSize: 15, color: BRAND.onNavy },
+  primaryBtnText: { fontFamily: font.semi, fontSize: 15, color: '#ffffff' },
 
   segmentWrap: {
     flexDirection: 'row',
