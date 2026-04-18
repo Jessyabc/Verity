@@ -243,11 +243,14 @@ async function callPerplexity(
   model: string,
   systemMessage: string,
   userMessage: string,
-  opts?: { recencyFilter?: 'month' | 'week' | 'day' },
+  opts?: { recencyFilter?: 'month' | 'week' | 'day'; timeoutMs?: number; temperature?: number },
 ): Promise<string> {
+  const timeoutMs = opts?.timeoutMs ?? 22_000
+  const temperature = opts?.temperature ?? 0.2
+
   const body: Record<string, unknown> = {
     model,
-    temperature: 0.2,
+    temperature,
     messages: [
       { role: 'system', content: systemMessage },
       { role: 'user', content: userMessage },
@@ -257,14 +260,22 @@ async function callPerplexity(
     body.search_recency_filter = opts.recencyFilter
   }
 
-  const res = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort('timeout'), timeoutMs)
+  let res: Response
+  try {
+    res = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeout)
+  }
 
   if (!res.ok) {
     const errText = await res.text()
@@ -277,6 +288,50 @@ async function callPerplexity(
   const content = pjson.choices?.[0]?.message?.content
   if (!content) throw new Error('Empty Perplexity response')
   return content
+}
+
+async function callPerplexityJsonOnce(
+  apiKey: string,
+  model: string,
+  systemMessage: string,
+  userMessage: string,
+  opts: { recencyFilter?: 'month' | 'week' | 'day'; timeoutMs?: number; schemaHint: string },
+): Promise<Record<string, unknown>> {
+  const content = await callPerplexity(apiKey, model, systemMessage, userMessage, {
+    recencyFilter: opts.recencyFilter,
+    timeoutMs: opts.timeoutMs,
+    temperature: 0.2,
+  })
+  return extractJsonObject(content)
+}
+
+async function callPerplexityJsonWithRepair(
+  apiKey: string,
+  model: string,
+  systemMessage: string,
+  userMessage: string,
+  opts: {
+    recencyFilter?: 'month' | 'week' | 'day'
+    timeoutMs?: number
+    schemaHint: string
+  },
+): Promise<Record<string, unknown>> {
+  try {
+    return await callPerplexityJsonOnce(apiKey, model, systemMessage, userMessage, opts)
+  } catch (e) {
+    // One bounded "repair" retry: force JSON only + lower temperature.
+    const repairSystem =
+      systemMessage +
+      '\n\nYour previous response was invalid or not a single JSON object. ' +
+      'Return ONLY a single valid JSON object, no markdown, no prose.\n' +
+      `Schema:\n${opts.schemaHint}`
+    const content = await callPerplexity(apiKey, model, repairSystem, userMessage, {
+      recencyFilter: opts.recencyFilter,
+      timeoutMs: opts.timeoutMs,
+      temperature: 0,
+    })
+    return extractJsonObject(content)
+  }
 }
 
 // ─── Prompt builders ──────────────────────────────────────────────────────────
@@ -468,6 +523,8 @@ Deno.serve(async (req) => {
       slug?: string
       companyName?: string
       ticker?: string | null
+      recencyFilter?: 'month' | 'week' | 'day'
+      timeoutMs?: number
     }
     const slug = body.slug?.trim()
     const companyName = body.companyName?.trim()
@@ -499,60 +556,78 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceKey)
     const currentDate = new Date().toISOString().split('T')[0] // "YYYY-MM-DD"
     const ticker = body.ticker ?? null
+    const timeoutMs = typeof body.timeoutMs === 'number' && body.timeoutMs > 0 ? body.timeoutMs : 22_000
+    // Default to freshest for media; allow caller override for all search-backed calls.
+    const recencyFilter: 'month' | 'week' | 'day' = body.recencyFilter ?? 'day'
 
     // ── 3 focused parallel Perplexity calls ───────────────────────────────────
-    const [financialContent, companyContent, mediaContent] = await Promise.all([
-      callPerplexity(
+    const [financialObj, companyObj, mediaObj] = await Promise.all([
+      callPerplexityJsonWithRepair(
         perplexityKey,
         model,
         'You have web search access. Extract financial metrics from official SEC filings and earnings releases only. Return valid JSON only. No markdown fences.',
         buildFinancialHighlightsPrompt(companyName, ticker, currentDate),
+        {
+          timeoutMs,
+          schemaHint:
+            '{ "period": string, "period_end": string | null, "metrics": [{ "label": string, "value": string, "yoy": string | null }] }',
+        },
       ).catch((err: unknown) => {
         console.error('Financial highlights call failed:', err instanceof Error ? err.message : String(err))
         return null
       }),
 
-      callPerplexity(
+      callPerplexityJsonWithRepair(
         perplexityKey,
         model,
         'You have web search access. Use ONLY official IR, SEC filings, earnings releases, and company press releases. Never cite third-party news. Return valid JSON only. No markdown fences.',
         buildCompanyNarrativePrompt(companyName, ticker, currentDate),
+        {
+          timeoutMs,
+          schemaHint:
+            '{ "company_narrative": string, "company_sources": [{ "title": string, "url": string, "source": string|null, "snippet": string|null, "published_at": string|null }] }',
+        },
       ).catch((err: unknown) => {
         console.error('Company narrative call failed:', err instanceof Error ? err.message : String(err))
         return null
       }),
 
-      callPerplexity(
+      callPerplexityJsonWithRepair(
         perplexityKey,
         model,
         'You have web search access. Use ONLY truly independent third-party sources. NEVER cite company websites, subdomains, or syndicated press releases (PR Newswire, GlobeNewswire, Business Wire, Newsfile). Return valid JSON only. No markdown fences.',
         buildMediaNarrativePrompt(companyName, ticker, currentDate),
-        { recencyFilter: 'month' },
+        {
+          timeoutMs,
+          recencyFilter,
+          schemaHint:
+            '{ "media_narrative": string, "media_sources": [{ "title": string, "url": string, "source": string|null, "snippet": string|null, "published_at": string|null }], "factual_gaps": [{ "category": "numeric"|"disclosure"|"timing"|"definition"|"coverage", "text": string }] }',
+        },
       ).catch((err: unknown) => {
         console.error('Media narrative call failed:', err instanceof Error ? err.message : String(err))
         return null
       }),
     ])
 
-    if (!financialContent && !companyContent && !mediaContent) {
+    if (!financialObj && !companyObj && !mediaObj) {
       throw new Error('All 3 Perplexity calls failed')
     }
 
     // ── Parse each response ───────────────────────────────────────────────────
-    const financial_highlights = financialContent
-      ? parseFinancialHighlightsResponse(financialContent)
+    const financial_highlights = financialObj
+      ? parseFinancialHighlightsResponse(JSON.stringify(financialObj))
       : null
 
-    const { company_narrative, company_sources } = companyContent
-      ? parseCompanyNarrativeResponse(companyContent)
+    const { company_narrative, company_sources } = companyObj
+      ? parseCompanyNarrativeResponse(JSON.stringify(companyObj))
       : { company_narrative: null, company_sources: [] }
 
     const {
       media_narrative,
       media_sources: rawMediaSources,
       factual_gaps,
-    } = mediaContent
-      ? parseMediaNarrativeResponse(mediaContent)
+    } = mediaObj
+      ? parseMediaNarrativeResponse(JSON.stringify(mediaObj))
       : { media_narrative: null, media_sources: [], factual_gaps: [] }
 
     // ── Deterministic source contamination check ──────────────────────────────

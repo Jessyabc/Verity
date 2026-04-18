@@ -24,6 +24,7 @@ import { font, paletteDark, radius, space } from '@/constants/theme'
 import { useAdaptiveBrand } from '@/hooks/useAdaptiveBrand'
 import { formatUnknownError } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
+import { presentCustomerCenter } from '@/lib/purchases'
 
 const APPEARANCE_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: 'light', label: 'Light' },
@@ -91,6 +92,20 @@ export default function AccountSettingsScreen() {
   }
 
   const brand = useAdaptiveBrand()
+
+  const handleManageSubscription = useCallback(async () => {
+    try {
+      const r = await presentCustomerCenter()
+      if (r === 'not_configured') {
+        Alert.alert(
+          'Subscriptions not configured',
+          'RevenueCat is not configured for this build. Add EXPO_PUBLIC_REVENUECAT_API_KEY and rebuild the app.',
+        )
+      }
+    } catch (e) {
+      Alert.alert('Could not open Customer Center', formatUnknownError(e))
+    }
+  }, [])
 
   const displayInitial =
     (username.trim()[0] ?? user?.email?.[0] ?? '?').toUpperCase()
@@ -210,6 +225,24 @@ export default function AccountSettingsScreen() {
             <Text style={[styles.rowLabel, { color: brand.onNavy }]}>Watchlist cap</Text>
             <Text style={[styles.rowValue, { color: brand.onNavyMuted }]}>15 companies</Text>
           </View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              {
+                marginTop: space.md,
+                backgroundColor: brand.glassNavy,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: brand.stroke,
+                opacity: pressed ? 0.85 : 1,
+              },
+            ]}
+            onPress={() => void handleManageSubscription()}
+            accessibilityLabel="Manage subscription"
+          >
+            <Text style={[styles.primaryBtnText, { color: brand.onNavy }]}>
+              Manage subscription
+            </Text>
+          </Pressable>
           <View style={[styles.row, { borderTopColor: brand.stroke }]}>
             <Text style={[styles.rowLabel, { color: brand.onNavy }]}>Daily refresh</Text>
             <Text style={[styles.rowValue, { color: brand.onNavyMuted }]}>8:00 PM</Text>

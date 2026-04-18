@@ -39,6 +39,7 @@ import { useEntitlement } from '@/contexts/EntitlementContext'
 import {
   getOfferings,
   purchasePackage,
+  presentRevenueCatPaywall,
   restorePurchases,
   PRODUCT_MONTHLY_ID,
   PRODUCT_ANNUAL_ID,
@@ -66,6 +67,23 @@ export default function PaywallScreen() {
   const insets = useSafeAreaInsets()
   const router  = useRouter()
   const { refresh: refreshEntitlement } = useEntitlement()
+
+  // Prefer RevenueCat Paywall UI when available/configured.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await presentRevenueCatPaywall()
+        if (r === 'purchased' || r === 'restored') {
+          await refreshEntitlement()
+          router.replace('/(tabs)')
+        }
+      } catch {
+        // If Paywall UI fails (misconfig, network), fall back to the custom paywall below.
+      }
+    })()
+    // Only run once per screen mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // RevenueCat package objects (null until offerings load or if RC not configured)
   const [monthlyPkg, setMonthlyPkg] = useState<PurchasesPackage | null>(null)
