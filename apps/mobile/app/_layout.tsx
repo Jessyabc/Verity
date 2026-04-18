@@ -140,7 +140,6 @@ function AuthAwareStack() {
             gestureEnabled: false,
           }}
         />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
     </SidebarProvider>
   )

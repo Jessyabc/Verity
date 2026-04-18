@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     letterSpacing: 0.8,
   },
-  sourceMeta:    { fontFamily: font.regular, fontSize: 12, color: '#8b919c' },
+  sourceMeta:    { fontFamily: font.regular, fontSize: 12 },
   sourceTitle:   { fontFamily: font.semi, fontSize: 15, lineHeight: 21 },
   sourceSnippet: { fontFamily: font.regular, fontSize: 14, lineHeight: 21, marginTop: space.xs },
   sourceDomain:  { fontFamily: font.regular, fontSize: 12, marginTop: space.sm },

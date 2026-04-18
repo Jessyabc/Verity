@@ -154,39 +154,3 @@ export function flattenWatchlistResearchHighlights(
   }
   return out
 }
-
-
-export type WatchlistResearchHighlight = {
-  slug: string
-  companyName: string
-  ticker: string | null
-  fetchedAt: string
-  item: ResearchNewsItem
-}
-
-/** Flatten cached Perplexity items into a single watchlist feed (newest companies first). */
-export function flattenWatchlistResearchHighlights(
-  rows: CompanyResearchRow[],
-  options?: { itemsPerCompany?: number; maxTotal?: number },
-): WatchlistResearchHighlight[] {
-  const per = options?.itemsPerCompany ?? 2
-  const max = options?.maxTotal ?? 12
-  const sorted = [...rows].sort(
-    (a, b) => new Date(b.fetched_at).getTime() - new Date(a.fetched_at).getTime(),
-  )
-  const out: WatchlistResearchHighlight[] = []
-  for (const row of sorted) {
-    for (const item of row.items.slice(0, per)) {
-      if (!item?.title?.trim() || !item?.url?.trim()) continue
-      out.push({
-        slug: row.slug,
-        companyName: row.company_name,
-        ticker: row.ticker,
-        fetchedAt: row.fetched_at,
-        item,
-      })
-      if (out.length >= max) return out
-    }
-  }
-  return out
-}

@@ -32,8 +32,8 @@ import { LiquidGlassSearchOrb } from '@/components/LiquidGlassSearchOrb'
 import { useSidebar } from '@/components/Sidebar'
 import { VerityMark } from '@/components/VerityMark'
 import { useAuth } from '@/contexts/AuthContext'
-import { BRAND } from '@/constants/brand'
 import { font, radius, space } from '@/constants/theme'
+import { useAdaptiveBrand } from '@/hooks/useAdaptiveBrand'
 import { buildCompanyLogoCandidates } from '@/lib/companyLogo'
 import { formatAgo, formatUnknownError, getGreeting } from '@/lib/format'
 import { searchCompanies, type SearchCompanyRow } from '@/lib/companySearch'
@@ -57,12 +57,13 @@ type CardProps = {
   company: WatchlistCompanyRow
   research: CompanyResearchRow | undefined
   logoCandidates: string[]
+  brand: ReturnType<typeof useAdaptiveBrand>
   onPress: () => void
   onRemove: () => void
   isLast: boolean
 }
 
-function CompanyCard({ company, research, logoCandidates, onPress, onRemove, isLast }: CardProps) {
+function CompanyCard({ company, research, logoCandidates, brand, onPress, onRemove, isLast }: CardProps) {
   const summary = research?.synthesis ?? research?.items?.[0]?.snippet ?? null
   const gaps = Array.isArray(research?.factual_gaps) ? (research!.factual_gaps as unknown[]) : []
 
@@ -82,7 +83,7 @@ function CompanyCard({ company, research, logoCandidates, onPress, onRemove, isL
       onPress={onPress}
       style={({ pressed }) => [
         styles.listRow,
-        !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BRAND.stroke },
+        !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brand.stroke },
         { opacity: pressed ? 0.85 : 1 },
       ]}
     >
@@ -94,23 +95,23 @@ function CompanyCard({ company, research, logoCandidates, onPress, onRemove, isL
         tone="brand"
       />
       <View style={styles.listRowMain}>
-        <Text style={[styles.cardName, { color: BRAND.onNavy }]} numberOfLines={1}>
+        <Text style={[styles.cardName, { color: brand.onNavy }]} numberOfLines={1}>
           {company.name}
         </Text>
         {(company.ticker || company.exchange) ? (
-          <Text style={[styles.cardTicker, { color: BRAND.onNavyMuted }]} numberOfLines={1}>
+          <Text style={[styles.cardTicker, { color: brand.onNavyMuted }]} numberOfLines={1}>
             {[company.ticker, company.exchange].filter(Boolean).join(' · ')}
           </Text>
         ) : null}
-        <Text style={[styles.listSubtitle, { color: BRAND.onNavySubtle }]} numberOfLines={1}>
+        <Text style={[styles.listSubtitle, { color: brand.onNavySubtle }]} numberOfLines={2}>
           {subtitle}
         </Text>
       </View>
-      <Text style={[styles.chevron, { color: BRAND.onNavySubtle }]} aria-hidden>
+      <Text style={[styles.chevron, { color: brand.onNavySubtle }]} aria-hidden>
         ›
       </Text>
       <Pressable onPress={onRemove} style={styles.removeIconHit} hitSlop={12}>
-        <Text style={[styles.removeBtnText, { color: BRAND.onNavySubtle }]}>✕</Text>
+        <Text style={[styles.removeBtnText, { color: brand.onNavySubtle }]}>✕</Text>
       </Pressable>
     </Pressable>
   )
@@ -125,10 +126,11 @@ type DigestCardProps = {
 }
 
 function DigestCard({ digest, loading, onRefresh }: DigestCardProps) {
+  const brand = useAdaptiveBrand()
   if (loading) {
     return (
       <View style={styles.digestShimmer}>
-        <Text style={[styles.digestShimmerText, { color: BRAND.onNavySubtle }]}>
+        <Text style={[styles.digestShimmerText, { color: brand.onNavySubtle }]}>
           Loading your summary…
         </Text>
       </View>
@@ -138,8 +140,8 @@ function DigestCard({ digest, loading, onRefresh }: DigestCardProps) {
   // Generating but no text yet — first-time generation in flight
   if (digest?.is_generating && !digest.digest_text) {
     return (
-      <View style={[styles.digestPrompt, { borderColor: BRAND.stroke }]}>
-        <Text style={[styles.digestPromptText, { color: BRAND.onNavyMuted }]}>
+      <View style={[styles.digestPrompt, { borderColor: brand.stroke }]}>
+        <Text style={[styles.digestPromptText, { color: brand.onNavyMuted }]}>
           Preparing your portfolio summary…
         </Text>
       </View>
@@ -152,12 +154,12 @@ function DigestCard({ digest, loading, onRefresh }: DigestCardProps) {
       <Pressable
         style={({ pressed }) => [
           styles.digestPrompt,
-          { borderColor: BRAND.stroke, opacity: pressed ? 0.7 : 1 },
+          { borderColor: brand.stroke, opacity: pressed ? 0.7 : 1 },
         ]}
         onPress={onRefresh}
         accessibilityLabel="Generate portfolio summary"
       >
-        <Text style={[styles.digestPromptText, { color: BRAND.onNavyMuted }]}>
+        <Text style={[styles.digestPromptText, { color: brand.onNavyMuted }]}>
           Tap to generate your portfolio summary
         </Text>
       </Pressable>
@@ -167,22 +169,22 @@ function DigestCard({ digest, loading, onRefresh }: DigestCardProps) {
   // Has digest text
   return (
     <BlurView intensity={28} tint="dark" style={styles.digestCard}>
-      <View style={[styles.digestCardInner, { backgroundColor: BRAND.glassNavy, borderColor: BRAND.stroke }]}>
+      <View style={[styles.digestCardInner, { backgroundColor: brand.glassNavy, borderColor: brand.stroke }]}>
         <Text
-          style={[styles.digestText, { color: BRAND.onNavyMuted }]}
+          style={[styles.digestText, { color: brand.onNavyMuted }]}
           numberOfLines={4}
         >
           {digest.digest_text}
         </Text>
         <View style={styles.digestFooter}>
-          <Text style={[styles.digestMeta, { color: BRAND.onNavySubtle }]}>
+          <Text style={[styles.digestMeta, { color: brand.onNavySubtle }]}>
             {digest.is_generating
               ? 'Updating…'
               : `Updated ${formatAgo(digest.generated_at)}`}
           </Text>
           {!digest.is_generating ? (
             <Pressable onPress={onRefresh} hitSlop={10} accessibilityLabel="Refresh summary">
-              <Text style={[styles.digestRefreshBtn, { color: BRAND.tealLight }]}>Refresh</Text>
+              <Text style={[styles.digestRefreshBtn, { color: brand.tealLight }]}>Refresh</Text>
             </Pressable>
           ) : null}
         </View>
@@ -203,6 +205,7 @@ type SearchModalProps = {
 
 function SearchModal({ visible, onClose, onSelect, currentSlugs, atCap }: SearchModalProps) {
   const insets = useSafeAreaInsets()
+  const brand = useAdaptiveBrand()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchCompanyRow[]>([])
   const [searching, setSearching] = useState(false)
@@ -243,24 +246,24 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, atCap }: Search
       }}
     >
       <KeyboardAvoidingView
-        style={[styles.searchScreenRoot, { backgroundColor: BRAND.navy }]}
+        style={[styles.searchScreenRoot, { backgroundColor: brand.navy }]}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={[styles.searchScreenInner, { backgroundColor: BRAND.navy }]}>
+        <View style={[styles.searchScreenInner, { backgroundColor: brand.navy }]}>
           <View
             style={[
               styles.safariChrome,
               {
                 paddingTop: insets.top + 6,
-                borderBottomColor: BRAND.stroke,
-                backgroundColor: BRAND.navy,
+                borderBottomColor: brand.stroke,
+                backgroundColor: brand.navy,
               },
             ]}
           >
             <Text
               style={[
                 styles.safariEcho,
-                { color: query.length > 0 ? BRAND.onNavy : BRAND.onNavySubtle },
+                { color: query.length > 0 ? brand.onNavy : brand.onNavySubtle },
               ]}
               numberOfLines={2}
             >
@@ -276,22 +279,22 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, atCap }: Search
                 hitSlop={12}
                 style={styles.safariCancelHit}
               >
-                <Text style={[styles.safariCancel, { color: BRAND.tealLight }]}>Cancel</Text>
+                <Text style={[styles.safariCancel, { color: brand.tealLight }]}>Cancel</Text>
               </Pressable>
               <View
                 style={[
                   styles.safariFieldPill,
                   {
-                    backgroundColor: BRAND.glassNavy,
-                    borderColor: BRAND.stroke,
+                    backgroundColor: brand.glassNavy,
+                    borderColor: brand.stroke,
                   },
                 ]}
               >
-                <Ionicons name="search" size={18} color={BRAND.onNavySubtle} style={styles.safariFieldIcon} />
+                <Ionicons name="search" size={18} color={brand.onNavySubtle} style={styles.safariFieldIcon} />
                 <TextInput
-                  style={[styles.safariFieldInput, { color: BRAND.onNavy }]}
+                  style={[styles.safariFieldInput, { color: brand.onNavy }]}
                   placeholder="Search or enter company…"
-                  placeholderTextColor={BRAND.onNavyMuted}
+                  placeholderTextColor={brand.onNavyMuted}
                   value={query}
                   onChangeText={setQuery}
                   returnKeyType="search"
@@ -301,7 +304,7 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, atCap }: Search
                   autoFocus
                 />
                 {searching ? (
-                  <ActivityIndicator size="small" color={BRAND.tealLight} style={styles.safariSpinner} />
+                  <ActivityIndicator size="small" color={brand.tealLight} style={styles.safariSpinner} />
                 ) : null}
               </View>
             </View>
@@ -309,8 +312,8 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, atCap }: Search
 
           {atCap ? (
             <View style={styles.capMessage}>
-              <Text style={[styles.capTitle, { color: BRAND.onNavy }]}>Watchlist full</Text>
-              <Text style={[styles.capBody, { color: BRAND.onNavyMuted }]}>
+              <Text style={[styles.capTitle, { color: brand.onNavy }]}>Watchlist full</Text>
+              <Text style={[styles.capBody, { color: brand.onNavyMuted }]}>
                 {"You're tracking"} {WATCHLIST_CAP} companies — the maximum on the current plan. Remove a
                 company to add another.
               </Text>
@@ -328,7 +331,7 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, atCap }: Search
               contentContainerStyle={{ paddingBottom: insets.bottom + 24, flexGrow: 1 }}
               ListEmptyComponent={
                 !searching ? (
-                  <Text style={[styles.emptyResults, { color: BRAND.onNavySubtle }]}>
+                  <Text style={[styles.emptyResults, { color: brand.onNavySubtle }]}>
                     {query.length > 0 ? 'No matches' : 'Type a company name or ticker…'}
                   </Text>
                 ) : null
@@ -340,8 +343,8 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, atCap }: Search
                     style={({ pressed }) => [
                       styles.resultRow,
                       {
-                        borderBottomColor: BRAND.stroke,
-                        backgroundColor: pressed ? 'rgba(92, 154, 154, 0.22)' : 'transparent',
+                        borderBottomColor: brand.stroke,
+                        backgroundColor: pressed ? brand.glassTealWash : 'transparent',
                         opacity: inList ? 0.5 : 1,
                       },
                     ]}
@@ -361,21 +364,21 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, atCap }: Search
                       tone="brand"
                     />
                     <View style={styles.resultText}>
-                      <Text style={[styles.resultName, { color: BRAND.onNavy }]} numberOfLines={1}>
+                      <Text style={[styles.resultName, { color: brand.onNavy }]} numberOfLines={1}>
                         {item.name}
                       </Text>
                       {item.exchange || item.ticker ? (
-                        <Text style={[styles.resultMeta, { color: BRAND.onNavyMuted }]} numberOfLines={1}>
+                        <Text style={[styles.resultMeta, { color: brand.onNavyMuted }]} numberOfLines={1}>
                           {[item.ticker, item.exchange].filter(Boolean).join(' · ')}
                         </Text>
                       ) : null}
                     </View>
                     {inList ? (
-                      <Ionicons name="bookmark" size={22} color={BRAND.tealLight} accessibilityLabel="On watchlist" />
+                      <Ionicons name="bookmark" size={22} color={brand.tealLight} accessibilityLabel="On watchlist" />
                     ) : (
                       <View style={styles.addToWatchRow}>
-                        <Ionicons name="add-circle-outline" size={22} color={BRAND.tealLight} />
-                        <Text style={[styles.addLabel, { color: BRAND.tealLight }]}>Add</Text>
+                        <Ionicons name="add-circle-outline" size={22} color={brand.tealLight} />
+                        <Text style={[styles.addLabel, { color: brand.tealLight }]}>Add</Text>
                       </View>
                     )}
                   </Pressable>
@@ -396,6 +399,7 @@ export default function WatchlistScreen() {
   const insets = useSafeAreaInsets()
   const { user } = useAuth()
   const { open: openSidebar } = useSidebar()
+  const brand = useAdaptiveBrand()
 
   const [companies, setCompanies] = useState<WatchlistCompanyRow[]>([])
   const [researchMap, setResearchMap] = useState<Map<string, CompanyResearchRow>>(new Map())
@@ -486,33 +490,33 @@ export default function WatchlistScreen() {
   const atCap = companies.length >= WATCHLIST_CAP
 
   return (
-    <View style={[styles.screen, { backgroundColor: BRAND.navy }]}>
+    <View style={[styles.screen, { backgroundColor: brand.navy }]}>
       <View
         style={[
           styles.header,
-          { paddingTop: insets.top + space.md, borderBottomColor: BRAND.stroke },
+          { paddingTop: insets.top + space.md, borderBottomColor: brand.stroke },
         ]}
       >
         <Pressable style={styles.menuBtn} onPress={openSidebar} hitSlop={10} accessibilityLabel="Open menu">
-          <Ionicons name="menu-outline" size={26} color={BRAND.tealLight} />
+          <Ionicons name="menu-outline" size={26} color={brand.tealLight} />
         </Pressable>
         <VerityMark size={28} />
         <View style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, { color: BRAND.onNavy }]}>Watchlist</Text>
+          <Text style={[styles.headerTitle, { color: brand.onNavy }]}>Watchlist</Text>
           {user ? (
-            <Text style={[styles.headerGreeting, { color: BRAND.onNavySubtle }]} numberOfLines={1}>
+            <Text style={[styles.headerGreeting, { color: brand.onNavySubtle }]} numberOfLines={1}>
               {getGreeting(user.email)}
             </Text>
           ) : null}
         </View>
-        <Text style={[styles.companyCount, { color: BRAND.onNavySubtle }]}>
+        <Text style={[styles.companyCount, { color: brand.onNavySubtle }]}>
           {companies.length}/{WATCHLIST_CAP}
         </Text>
       </View>
 
       {error ? (
         <View style={[styles.errBanner, { backgroundColor: 'rgba(185, 28, 28, 0.25)' }]}>
-          <Text style={[styles.err, { color: BRAND.onNavy }]}>{error}</Text>
+          <Text style={[styles.err, { color: brand.onNavy }]}>{error}</Text>
         </View>
       ) : null}
 
@@ -528,16 +532,16 @@ export default function WatchlistScreen() {
       ) : null}
 
       {loading ? (
-        <ActivityIndicator color={BRAND.tealLight} size="large" style={{ marginTop: space.xl }} />
+        <ActivityIndicator color={brand.tealLight} size="large" style={{ marginTop: space.xl }} />
       ) : companies.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={[styles.emptyTitle, { color: BRAND.onNavy }]}>Your watchlist is empty</Text>
-          <Text style={[styles.emptyBody, { color: BRAND.onNavyMuted }]}>
+          <Text style={[styles.emptyTitle, { color: brand.onNavy }]}>Your watchlist is empty</Text>
+          <Text style={[styles.emptyBody, { color: brand.onNavyMuted }]}>
             Search for any public company below. Verity tracks the gap between what the company officially says and
             what media and analysts are reporting.
           </Text>
           <Pressable
-            style={[styles.emptyBtn, { backgroundColor: BRAND.tealDark }]}
+            style={[styles.emptyBtn, { backgroundColor: brand.tealDark }]}
             onPress={() => setShowSearch(true)}
           >
             <Text style={styles.emptyBtnText}>Add your first company</Text>
@@ -545,8 +549,8 @@ export default function WatchlistScreen() {
         </View>
       ) : (
         <View style={styles.listOuter}>
-          <BlurView intensity={48} tint="dark" style={styles.listGlassOuter}>
-            <View style={[styles.listGlassInner, { backgroundColor: BRAND.glassNavy }]}>
+          <BlurView intensity={48} tint={brand.blurTint} style={styles.listGlassOuter}>
+            <View style={[styles.listGlassInner, { backgroundColor: brand.glassNavy }]}>
               <FlatList
                 data={companies}
                 keyExtractor={(c) => c.slug}
@@ -565,6 +569,7 @@ export default function WatchlistScreen() {
                       explicit: item.logo_url,
                       sourceBaseUrls: sourceBySlug.get(item.slug) ?? [],
                     })}
+                    brand={brand}
                     isLast={index === companies.length - 1}
                     onPress={() => router.push(`/company/${item.slug}`)}
                     onRemove={() => void handleRemove(item.slug)}
@@ -586,7 +591,7 @@ export default function WatchlistScreen() {
             if (!atCap) setShowSearch(true)
           }}
           disabled={atCap}
-          iconColor={atCap ? BRAND.onNavySubtle : BRAND.onNavy}
+          iconColor={atCap ? brand.onNavySubtle : brand.onNavy}
           accessibilityLabel={
             atCap
               ? `Watchlist full, ${WATCHLIST_CAP} of ${WATCHLIST_CAP} companies`
@@ -716,7 +721,7 @@ const styles = StyleSheet.create({
     marginBottom: space.xl,
   },
   emptyBtn: { borderRadius: radius.md, paddingVertical: space.md, alignItems: 'center' },
-  emptyBtnText: { fontFamily: font.semi, color: BRAND.onNavy, fontSize: 15 },
+  emptyBtnText: { fontFamily: font.semi, color: '#ffffff', fontSize: 15 },
 
   searchOrbContainer: {
     position: 'absolute',

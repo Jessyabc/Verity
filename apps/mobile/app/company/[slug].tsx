@@ -27,8 +27,8 @@ import Ionicons from '@expo/vector-icons/Ionicons'
 import { LiquidGlassHeaderIconButton } from '@/components/LiquidGlass'
 import { VerityMark } from '@/components/VerityMark'
 import { useAuth } from '@/contexts/AuthContext'
-import { BRAND } from '@/constants/brand'
 import { font, radius, space } from '@/constants/theme'
+import { useAdaptiveBrand, type AdaptiveBrandTokens } from '@/hooks/useAdaptiveBrand'
 import { fetchCompanyBundleBySlug } from '@/lib/companyBundle'
 import type { CompanyRow } from '@/lib/companyBySlug'
 import { formatAgo, formatResearchUpdated, formatUnknownError } from '@/lib/format'
@@ -91,12 +91,14 @@ function SourceLinkRow({
   savedRows,
   narrativeType,
   onSaveToggle,
+  brand,
 }: {
   item: ResearchNewsItem
   savedUrls: Set<string>
   savedRows: SavedHeadlineRow[]
   narrativeType: 'company' | 'media'
   onSaveToggle: (item: ResearchNewsItem, savedId?: string, type?: 'company' | 'media') => void
+  brand: AdaptiveBrandTokens
 }) {
   const isSaved = savedUrls.has(item.url)
   const savedRow = savedRows.find((r) => r.url === item.url)
@@ -104,16 +106,16 @@ function SourceLinkRow({
     <Pressable
       style={({ pressed }) => [
         styles.sourceRow,
-        { borderTopColor: BRAND.stroke },
+        { borderTopColor: brand.stroke },
         { opacity: pressed ? 0.92 : 1 },
       ]}
       onPress={() => void openUrl(item.url)}
     >
       <View style={styles.sourceBody}>
-        <Text style={[styles.sourceTitle, { color: BRAND.tealLight }]} numberOfLines={2}>
+        <Text style={[styles.sourceTitle, { color: brand.tealLight }]} numberOfLines={2}>
           {item.title}
         </Text>
-        <Text style={[styles.sourceMeta, { color: BRAND.onNavySubtle }]} numberOfLines={1}>
+        <Text style={[styles.sourceMeta, { color: brand.onNavySubtle }]} numberOfLines={1}>
           {item.source ?? safeHostname(item.url)}
           {item.published_at ? ` · ${formatAgo(item.published_at)}` : ''}
         </Text>
@@ -123,7 +125,7 @@ function SourceLinkRow({
         onPress={() => onSaveToggle(item, savedRow?.id, narrativeType)}
         hitSlop={10}
       >
-        <Text style={[styles.bookmarkIcon, { color: isSaved ? BRAND.tealLight : BRAND.onNavySubtle }]}>
+        <Text style={[styles.bookmarkIcon, { color: isSaved ? brand.tealLight : brand.onNavySubtle }]}>
           {isSaved ? '✦' : '✧'}
         </Text>
       </Pressable>
@@ -131,23 +133,23 @@ function SourceLinkRow({
   )
 }
 
-function GlassChrome({ children }: { children: ReactNode }) {
+function GlassChrome({ children, brand }: { children: ReactNode; brand: AdaptiveBrandTokens }) {
   return (
-    <BlurView intensity={48} tint="dark" style={styles.glassBlurOuter}>
+    <BlurView intensity={48} tint={brand.blurTint} style={styles.glassBlurOuter}>
       <View style={styles.glassChromeInner}>{children}</View>
     </BlurView>
   )
 }
 
-function FactualGapsHero({ gaps }: { gaps: FactualGap[] }) {
+function FactualGapsHero({ gaps, brand }: { gaps: FactualGap[]; brand: AdaptiveBrandTokens }) {
   const slice = gaps.slice(0, 5)
   const thinCoverage = slice.length > 0 && slice.length < 3
   return (
-    <GlassChrome>
-      <View style={[styles.heroPad, { backgroundColor: BRAND.glassNavy }]}>
+    <GlassChrome brand={brand}>
+      <View style={[styles.heroPad, { backgroundColor: brand.glassNavy }]}>
         <View style={styles.gapsTitleRow}>
-          <View style={[styles.tealDot, { backgroundColor: BRAND.tealDark }]} />
-          <Text style={styles.gapsTitle}>FACTUAL GAPS (THIS QUARTER)</Text>
+          <View style={[styles.tealDot, { backgroundColor: brand.tealDark }]} />
+          <Text style={[styles.gapsTitle, { color: brand.tealLight }]}>FACTUAL GAPS (THIS QUARTER)</Text>
         </View>
         {slice.length > 0 ? (
           <>
@@ -159,32 +161,32 @@ function FactualGapsHero({ gaps }: { gaps: FactualGap[] }) {
                   key={i}
                   style={[
                     styles.gapBlock,
-                    i < slice.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BRAND.stroke },
+                    i < slice.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brand.stroke },
                   ]}
                 >
                   <View style={styles.gapBlockHeader}>
-                    <Text style={[styles.gapIndex, { color: BRAND.tealLight }]}>{num}</Text>
+                    <Text style={[styles.gapIndex, { color: brand.tealLight }]}>{num}</Text>
                     {label ? (
-                      <View style={[styles.gapCategoryChip, { borderColor: BRAND.stroke }]}>
-                        <Text style={[styles.gapCategoryChipText, { color: BRAND.onNavySubtle }]}>{label}</Text>
+                      <View style={[styles.gapCategoryChip, { borderColor: brand.stroke }]}>
+                        <Text style={[styles.gapCategoryChipText, { color: brand.onNavySubtle }]}>{label}</Text>
                       </View>
                     ) : null}
                   </View>
-                  <Text style={[styles.gapText, { color: BRAND.onNavy }]}>{factualGapText(gap)}</Text>
+                  <Text style={[styles.gapText, { color: brand.onNavy }]}>{factualGapText(gap)}</Text>
                 </View>
               )
             })}
-            <Text style={[styles.gapsFooter, { color: BRAND.onNavySubtle }]}>
+            <Text style={[styles.gapsFooter, { color: brand.onNavySubtle }]}>
               Objective mismatches only · no interpretation
             </Text>
             {thinCoverage ? (
-              <Text style={[styles.gapsFooterThin, { color: BRAND.onNavySubtle }]}>
+              <Text style={[styles.gapsFooterThin, { color: brand.onNavySubtle }]}>
                 Limited independent coverage—gaps may reflect disclosure depth rather than disagreement.
               </Text>
             ) : null}
           </>
         ) : (
-          <Text style={[styles.placeholderText, { color: BRAND.onNavyMuted }]}>
+          <Text style={[styles.placeholderText, { color: brand.onNavyMuted }]}>
             Refresh research to surface factual mismatches.
           </Text>
         )}
@@ -193,15 +195,21 @@ function FactualGapsHero({ gaps }: { gaps: FactualGap[] }) {
   )
 }
 
-function FinancialHighlightsCard({ highlights }: { highlights: FinancialHighlights }) {
+function FinancialHighlightsCard({
+  highlights,
+  brand,
+}: {
+  highlights: FinancialHighlights
+  brand: AdaptiveBrandTokens
+}) {
   const metrics = highlights.metrics.slice(0, 8)
   return (
-    <GlassChrome>
-      <View style={[styles.highlightsPad, { backgroundColor: BRAND.glassNavy }]}>
+    <GlassChrome brand={brand}>
+      <View style={[styles.highlightsPad, { backgroundColor: brand.glassNavy }]}>
         <View style={styles.highlightsHeaderRow}>
-          <Text style={styles.highlightsTitle}>KEY FINANCIAL HIGHLIGHTS</Text>
-          <View style={[styles.periodChip, { borderColor: BRAND.stroke }]}>
-            <Text style={[styles.periodChipText, { color: BRAND.onNavySubtle }]}>
+          <Text style={[styles.highlightsTitle, { color: brand.tealLight }]}>KEY FINANCIAL HIGHLIGHTS</Text>
+          <View style={[styles.periodChip, { borderColor: brand.stroke }]}>
+            <Text style={[styles.periodChipText, { color: brand.onNavySubtle }]}>
               {highlights.period}
               {highlights.period_end ? ` · ${highlights.period_end}` : ''}
             </Text>
@@ -210,10 +218,10 @@ function FinancialHighlightsCard({ highlights }: { highlights: FinancialHighligh
         <View style={styles.metricsGrid}>
           {metrics.map((m, i) => (
             <View key={i} style={styles.metricCell}>
-              <Text style={[styles.metricLabel, { color: BRAND.onNavySubtle }]} numberOfLines={1}>
+              <Text style={[styles.metricLabel, { color: brand.onNavySubtle }]} numberOfLines={1}>
                 {m.label}
               </Text>
-              <Text style={[styles.metricValue, { color: BRAND.onNavy }]}>{m.value}</Text>
+              <Text style={[styles.metricValue, { color: brand.onNavy }]}>{m.value}</Text>
               {m.yoy ? (
                 <Text
                   style={[
@@ -223,7 +231,7 @@ function FinancialHighlightsCard({ highlights }: { highlights: FinancialHighligh
                         ? '#34d399'
                         : m.yoy.startsWith('-')
                           ? '#f87171'
-                          : BRAND.onNavySubtle,
+                          : brand.onNavySubtle,
                     },
                   ]}
                 >
@@ -233,7 +241,7 @@ function FinancialHighlightsCard({ highlights }: { highlights: FinancialHighligh
             </View>
           ))}
         </View>
-        <Text style={[styles.highlightsFooter, { color: BRAND.onNavySubtle }]}>
+        <Text style={[styles.highlightsFooter, { color: brand.onNavySubtle }]}>
           From official IR &amp; SEC filings only
         </Text>
       </View>
@@ -254,6 +262,7 @@ function NarrativeCard({
   savedRows,
   narrativeType,
   onSaveToggle,
+  brand,
 }: {
   title: string
   subtitle: string
@@ -267,6 +276,7 @@ function NarrativeCard({
   savedRows: SavedHeadlineRow[]
   narrativeType: 'company' | 'media'
   onSaveToggle: (item: ResearchNewsItem, savedId?: string, type?: 'company' | 'media') => void
+  brand: AdaptiveBrandTokens
 }) {
   const [open, setOpen] = useState(false)
 
@@ -278,9 +288,9 @@ function NarrativeCard({
   const bodyBlock = (
     <>
       {bodyText?.trim() ? (
-        <Text style={[styles.narrBody, { color: BRAND.onNavy }]}>{bodyText.trim()}</Text>
+        <Text style={[styles.narrBody, { color: brand.onNavy }]}>{bodyText.trim()}</Text>
       ) : (
-        <Text style={[styles.narrPlaceholder, { color: BRAND.onNavyMuted }]}>{placeholder}</Text>
+        <Text style={[styles.narrPlaceholder, { color: brand.onNavyMuted }]}>{placeholder}</Text>
       )}
 
       {sourceItems.length > 0 ? (
@@ -289,8 +299,8 @@ function NarrativeCard({
             style={({ pressed }) => [styles.sourcesToggle, { opacity: pressed ? 0.85 : 1 }]}
             onPress={toggleSources}
           >
-            <Text style={[styles.sourcesLabel, { color: BRAND.onNavySubtle }]}>{sourcesLabel}</Text>
-            <Text style={[styles.sourcesToggleText, { color: BRAND.tealLight }]}>
+            <Text style={[styles.sourcesLabel, { color: brand.onNavySubtle }]}>{sourcesLabel}</Text>
+            <Text style={[styles.sourcesToggleText, { color: brand.tealLight }]}>
               {open ? 'Hide' : 'Show'} ({sourceItems.length})
             </Text>
           </Pressable>
@@ -303,6 +313,7 @@ function NarrativeCard({
                   savedRows={savedRows}
                   narrativeType={narrativeType}
                   onSaveToggle={onSaveToggle}
+                  brand={brand}
                 />
               ))
             : null}
@@ -314,10 +325,10 @@ function NarrativeCard({
   const inner = (
     <View style={styles.narrativeRow}>
       {glass === 'navy' ? (
-        <View style={[styles.narrativeAccent, { backgroundColor: BRAND.tealDark }]} />
+        <View style={[styles.narrativeAccent, { backgroundColor: brand.tealDark }]} />
       ) : (
         <LinearGradient
-          colors={[BRAND.tealDark, BRAND.tealLight]}
+          colors={[brand.tealDark, brand.tealLight]}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
           style={styles.narrativeAccent}
@@ -328,31 +339,31 @@ function NarrativeCard({
           <View style={styles.titleRow}>
             <View style={styles.narrTitleLead}>
               <VerityMark size={24} />
-              <Ionicons name="business-outline" size={20} color={BRAND.tealLight} style={styles.narrLeadIcon} />
+              <Ionicons name="business-outline" size={20} color={brand.tealLight} style={styles.narrLeadIcon} />
             </View>
-            <Text style={[styles.narrTitle, { color: BRAND.onNavy }]}>{title}</Text>
-            <View style={[styles.badge, { borderColor: BRAND.tealDark }]}>
-              <Text style={[styles.badgeText, { color: BRAND.tealLight }]}>{badge}</Text>
+            <Text style={[styles.narrTitle, { color: brand.onNavy }]}>{title}</Text>
+            <View style={[styles.badge, { borderColor: brand.tealDark }]}>
+              <Text style={[styles.badgeText, { color: brand.tealLight }]}>{badge}</Text>
             </View>
           </View>
-          <Text style={[styles.narrSubtitle, { color: BRAND.onNavySubtle }]}>{subtitle}</Text>
+          <Text style={[styles.narrSubtitle, { color: brand.onNavySubtle }]}>{subtitle}</Text>
           {bodyBlock}
         </View>
       ) : (
         <View style={styles.narrativeMainMediaOuter}>
           <View style={[StyleSheet.absoluteFillObject, styles.narrativeMainMediaBase]} />
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: BRAND.glassTealWash }]} />
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: brand.glassTealWash }]} />
           <View style={styles.narrativeMain}>
             <View style={styles.titleRow}>
               <View style={styles.narrTitleLead}>
-                <Ionicons name="newspaper-outline" size={22} color={BRAND.tealLight} style={styles.narrLeadIcon} />
+                <Ionicons name="newspaper-outline" size={22} color={brand.tealLight} style={styles.narrLeadIcon} />
               </View>
-              <Text style={[styles.narrTitle, { color: BRAND.onNavy }]}>{title}</Text>
-              <View style={[styles.badge, { borderColor: BRAND.tealDark }]}>
-                <Text style={[styles.badgeText, { color: BRAND.tealLight }]}>{badge}</Text>
+              <Text style={[styles.narrTitle, { color: brand.onNavy }]}>{title}</Text>
+              <View style={[styles.badge, { borderColor: brand.tealDark }]}>
+                <Text style={[styles.badgeText, { color: brand.tealLight }]}>{badge}</Text>
               </View>
             </View>
-            <Text style={[styles.narrSubtitle, { color: BRAND.onNavySubtle }]}>{subtitle}</Text>
+            <Text style={[styles.narrSubtitle, { color: brand.onNavySubtle }]}>{subtitle}</Text>
             {bodyBlock}
           </View>
         </View>
@@ -368,7 +379,7 @@ function NarrativeCard({
         end={{ x: 1, y: 1 }}
         style={styles.tealGradientBorder}
       >
-        <BlurView intensity={44} tint="dark" style={styles.glassBlurOuter}>
+        <BlurView intensity={44} tint={brand.blurTint} style={styles.glassBlurOuter}>
           <View style={styles.tealWash}>{inner}</View>
         </BlurView>
       </LinearGradient>
@@ -376,7 +387,7 @@ function NarrativeCard({
   }
 
   return (
-    <BlurView intensity={48} tint="dark" style={styles.glassBlurOuter}>
+    <BlurView intensity={48} tint={brand.blurTint} style={styles.glassBlurOuter}>
       {inner}
     </BlurView>
   )
@@ -389,29 +400,29 @@ type MarketStripProps = {
   peRatio: number | null
 }
 
-function MarketGlassStrip({ price, changePct, marketCap, peRatio }: MarketStripProps) {
+function MarketGlassStrip({ price, changePct, marketCap, peRatio, brand }: MarketStripProps & { brand: AdaptiveBrandTokens }) {
   const changeStr = `${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`
   return (
-    <GlassChrome>
-      <View style={[styles.marketGlassInner, { backgroundColor: BRAND.glassNavy }]}>
+    <GlassChrome brand={brand}>
+      <View style={[styles.marketGlassInner, { backgroundColor: brand.glassNavy }]}>
         <View style={styles.marketCol}>
-          <Text style={[styles.marketLabel, { color: BRAND.onNavySubtle }]}>LAST</Text>
-          <Text style={[styles.marketPrice, { color: BRAND.onNavy }]}>${price.toFixed(2)}</Text>
+          <Text style={[styles.marketLabel, { color: brand.onNavySubtle }]}>LAST</Text>
+          <Text style={[styles.marketPrice, { color: brand.onNavy }]}>${price.toFixed(2)}</Text>
         </View>
         <View style={styles.marketCol}>
-          <Text style={[styles.marketLabel, { color: BRAND.onNavySubtle }]}>DAY</Text>
-          <Text style={[styles.marketChange, { color: BRAND.onNavy }]}>{changeStr}</Text>
+          <Text style={[styles.marketLabel, { color: brand.onNavySubtle }]}>DAY</Text>
+          <Text style={[styles.marketChange, { color: brand.onNavy }]}>{changeStr}</Text>
         </View>
         {marketCap ? (
           <View style={styles.marketCol}>
-            <Text style={[styles.marketLabel, { color: BRAND.onNavySubtle }]}>MKT CAP</Text>
-            <Text style={[styles.marketStat, { color: BRAND.onNavy }]}>{formatMarketCap(marketCap)}</Text>
+            <Text style={[styles.marketLabel, { color: brand.onNavySubtle }]}>MKT CAP</Text>
+            <Text style={[styles.marketStat, { color: brand.onNavy }]}>{formatMarketCap(marketCap)}</Text>
           </View>
         ) : null}
         {peRatio ? (
           <View style={styles.marketCol}>
-            <Text style={[styles.marketLabel, { color: BRAND.onNavySubtle }]}>P/E</Text>
-            <Text style={[styles.marketStat, { color: BRAND.onNavy }]}>{peRatio.toFixed(1)}</Text>
+            <Text style={[styles.marketLabel, { color: brand.onNavySubtle }]}>P/E</Text>
+            <Text style={[styles.marketStat, { color: brand.onNavy }]}>{peRatio.toFixed(1)}</Text>
           </View>
         ) : null}
       </View>
@@ -437,6 +448,8 @@ export default function CompanyScreen() {
   const [researchBusy, setResearchBusy] = useState(false)
   const [onWatchlist, setOnWatchlist] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const brand = useAdaptiveBrand()
 
   const savedUrls = savedUrlSet(savedRows)
 
@@ -467,7 +480,7 @@ export default function CompanyScreen() {
       }
 
       // First visit: no cached research → kick off fetch automatically.
-      if (!r && !autoRefreshFiredRef.current) {
+      if (!r && !autoRefreshFiredRef.current && bundle.company) {
         autoRefreshFiredRef.current = true
         setResearchBusy(true)
         try {
@@ -514,7 +527,7 @@ export default function CompanyScreen() {
       headerBackButtonDisplayMode: 'minimal',
       headerTransparent: true,
       headerShadowVisible: false,
-      headerTintColor: BRAND.tealLight,
+      headerTintColor: brand.tealLight,
       headerBlurEffect:
         Platform.OS === 'ios' ? ('systemChromeMaterialDark' as const) : undefined,
       headerStyle: {
@@ -522,13 +535,13 @@ export default function CompanyScreen() {
       },
       headerBackground: () =>
         Platform.OS === 'android' ? (
-          <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+          <BlurView intensity={80} tint={brand.blurTint} style={StyleSheet.absoluteFill} />
         ) : null,
       headerLeft: (_props: NativeStackHeaderBackProps) => (
         <View style={styles.navLeft}>
           <HeaderBackButton
             displayMode="minimal"
-            tintColor={BRAND.tealLight}
+            tintColor={brand.tealLight}
             onPress={() => navigation.goBack()}
           />
           <VerityMark size={26} />
@@ -544,7 +557,7 @@ export default function CompanyScreen() {
             <Ionicons
               name={onWatchlist ? 'bookmark' : 'bookmark-outline'}
               size={22}
-              color={onWatchlist ? BRAND.tealLight : BRAND.onNavySubtle}
+              color={onWatchlist ? brand.tealLight : brand.onNavySubtle}
             />
           </LiquidGlassHeaderIconButton>
         ) : null,
@@ -593,16 +606,16 @@ export default function CompanyScreen() {
 
   if (!slug) {
     return (
-      <View style={[styles.center, { backgroundColor: BRAND.navy, paddingTop: headerHeight }]}>
-        <Text style={{ color: BRAND.onNavyMuted }}>Missing company.</Text>
+      <View style={[styles.center, { backgroundColor: brand.navy, paddingTop: headerHeight }]}>
+        <Text style={{ color: brand.onNavyMuted }}>Missing company.</Text>
       </View>
     )
   }
 
   if (loading) {
     return (
-      <View style={[styles.center, { backgroundColor: BRAND.navy, paddingTop: headerHeight }]}>
-        <ActivityIndicator color={BRAND.tealLight} size="large" />
+      <View style={[styles.center, { backgroundColor: brand.navy, paddingTop: headerHeight }]}>
+        <ActivityIndicator color={brand.tealLight} size="large" />
       </View>
     )
   }
@@ -610,16 +623,16 @@ export default function CompanyScreen() {
   if (!company) {
     return (
       <View
-        style={[styles.center, { backgroundColor: BRAND.navy, padding: space.xl, paddingTop: headerHeight }]}
+        style={[styles.center, { backgroundColor: brand.navy, padding: space.xl, paddingTop: headerHeight }]}
       >
-        <Text style={[styles.h1, { color: BRAND.onNavy }]}>Not found</Text>
-        <Text style={{ color: BRAND.onNavyMuted, marginTop: space.md, textAlign: 'center' }}>
+        <Text style={[styles.h1, { color: brand.onNavy }]}>Not found</Text>
+        <Text style={{ color: brand.onNavyMuted, marginTop: space.md, textAlign: 'center' }}>
           {"This company isn't in the database yet."}
         </Text>
         <Pressable
           style={({ pressed }) => [
             styles.backBtn,
-            { backgroundColor: BRAND.tealDark, opacity: pressed ? 0.92 : 1 },
+            { backgroundColor: brand.tealDark, opacity: pressed ? 0.92 : 1 },
           ]}
           onPress={() => router.back()}
         >
@@ -646,7 +659,7 @@ export default function CompanyScreen() {
   const headerLine = company.ticker ? `${company.name} · ${company.ticker}` : company.name
 
   return (
-    <View style={[styles.container, { backgroundColor: BRAND.navy }]}>
+    <View style={[styles.container, { backgroundColor: brand.navy }]}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -657,32 +670,32 @@ export default function CompanyScreen() {
           },
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={BRAND.tealLight} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={brand.tealLight} />
         }
         showsVerticalScrollIndicator={false}
       >
         {error ? (
           <View style={[styles.banner, { backgroundColor: 'rgba(185, 28, 28, 0.22)' }]}>
-            <Text style={[styles.bannerTitle, { color: BRAND.onNavy }]}>Something went wrong</Text>
-            <Text style={[styles.bannerBody, { color: BRAND.onNavyMuted }]}>
+            <Text style={[styles.bannerTitle, { color: brand.onNavy }]}>Something went wrong</Text>
+            <Text style={[styles.bannerBody, { color: brand.onNavyMuted }]}>
               Pull to refresh or try again. {error}
             </Text>
           </View>
         ) : null}
 
         {/* 1 — Header */}
-        <Text style={[styles.headerLine, { color: BRAND.onNavy }]}>{headerLine}</Text>
+        <Text style={[styles.headerLine, { color: brand.onNavy }]}>{headerLine}</Text>
 
         {/* 2 — Updated + Refresh */}
         <View style={styles.refreshRow}>
-          <Text style={[styles.updatedLine, { color: BRAND.onNavyMuted }]}>
+          <Text style={[styles.updatedLine, { color: brand.onNavyMuted }]}>
             {formatResearchUpdated(research?.fetched_at)}
           </Text>
           <Pressable
             style={({ pressed }) => [
               styles.refreshBtn,
               {
-                backgroundColor: BRAND.tealDark,
+                backgroundColor: brand.tealDark,
                 opacity: researchBusy ? 0.75 : pressed ? 0.92 : 1,
               },
             ]}
@@ -690,7 +703,7 @@ export default function CompanyScreen() {
             disabled={researchBusy}
           >
             {researchBusy ? (
-              <ActivityIndicator color={BRAND.onNavy} size="small" />
+              <ActivityIndicator color="#ffffff" size="small" />
             ) : (
               <Text style={styles.refreshBtnLabel}>Refresh</Text>
             )}
@@ -704,20 +717,21 @@ export default function CompanyScreen() {
               changePct={marketData.changePct}
               marketCap={marketData.marketCap}
               peRatio={marketData.peRatio}
+              brand={brand}
             />
-            <View style={[styles.researchDivider, { backgroundColor: BRAND.stroke }]} />
+            <View style={[styles.researchDivider, { backgroundColor: brand.stroke }]} />
           </View>
         ) : null}
 
         {/* 3 — Factual gaps (hero) */}
         <View style={styles.gapsSectionWrap}>
-          <FactualGapsHero gaps={factualGaps} />
+          <FactualGapsHero gaps={factualGaps} brand={brand} />
         </View>
 
         {/* 4 — Financial highlights */}
         {research?.financial_highlights?.metrics?.length ? (
           <View style={styles.narrSectionSpacing}>
-            <FinancialHighlightsCard highlights={research.financial_highlights} />
+            <FinancialHighlightsCard highlights={research.financial_highlights} brand={brand} />
           </View>
         ) : null}
 
@@ -736,6 +750,7 @@ export default function CompanyScreen() {
             savedRows={savedRows}
             narrativeType="company"
             onSaveToggle={handleSaveToggle}
+            brand={brand}
           />
         </View>
 
@@ -754,6 +769,7 @@ export default function CompanyScreen() {
             savedRows={savedRows}
             narrativeType="media"
             onSaveToggle={handleSaveToggle}
+            brand={brand}
           />
         </View>
 
@@ -762,7 +778,7 @@ export default function CompanyScreen() {
           style={({ pressed }) => [
             styles.discussBtn,
             {
-              backgroundColor: BRAND.tealDark,
+              backgroundColor: brand.tealDark,
               opacity: researchBusy ? 0.75 : pressed ? 0.94 : 1,
             },
           ]}
@@ -777,7 +793,7 @@ export default function CompanyScreen() {
           </Text>
         </Pressable>
 
-        <Text style={[styles.disclaimer, { color: BRAND.onNavySubtle }]}>
+        <Text style={[styles.disclaimer, { color: brand.onNavySubtle }]}>
           Not investment advice · Compare official and independent narratives above · AI may be incomplete · verify with
           primary sources
         </Text>
@@ -810,7 +826,7 @@ const styles = StyleSheet.create({
     minWidth: 100,
     alignItems: 'center',
   },
-  refreshBtnLabel: { fontFamily: font.semi, fontSize: 15, color: BRAND.onNavy },
+  refreshBtnLabel: { fontFamily: font.semi, fontSize: 15, color: '#ffffff' },
 
   marketSection: { marginTop: space.sm },
   researchDivider: { height: StyleSheet.hairlineWidth, marginTop: space.lg },
@@ -843,7 +859,6 @@ const styles = StyleSheet.create({
     fontFamily: font.bold,
     fontSize: 12,
     letterSpacing: 0.9,
-    color: BRAND.tealLight,
     flex: 1,
   },
   gapBlock: { paddingVertical: space.sm },
@@ -856,7 +871,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   gapCategoryChipText: { fontFamily: font.medium, fontSize: 10, letterSpacing: 0.3 },
-  gapText: { fontFamily: font.regular, fontSize: 15, lineHeight: 22 },
+  gapText: { fontFamily: font.medium, fontSize: 16, lineHeight: 23 },
   gapsFooter: { fontFamily: font.regular, fontSize: 11, marginTop: space.md },
   gapsFooterThin: { fontFamily: font.regular, fontSize: 11, marginTop: space.sm, lineHeight: 16 },
   placeholderText: { fontFamily: font.regular, fontSize: 15, lineHeight: 22 },
@@ -903,7 +918,7 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   sourceBody: { flex: 1, minWidth: 0 },
-  sourceTitle: { fontFamily: font.semi, fontSize: 13, lineHeight: 19 },
+  sourceTitle: { fontFamily: font.semi, fontSize: 14, lineHeight: 20 },
   sourceMeta: { fontFamily: font.regular, fontSize: 11, marginTop: 2 },
   bookmarkBtn: { paddingTop: 2 },
   bookmarkIcon: { fontSize: 16 },
@@ -917,7 +932,7 @@ const styles = StyleSheet.create({
   discussBtnText: {
     fontFamily: font.semi,
     fontSize: 16,
-    color: BRAND.onNavy,
+    color: '#ffffff',
     textAlign: 'center',
     paddingHorizontal: space.md,
   },
@@ -942,7 +957,6 @@ const styles = StyleSheet.create({
     fontFamily: font.bold,
     fontSize: 11,
     letterSpacing: 0.9,
-    color: BRAND.tealLight,
     flexShrink: 1,
   },
   periodChip: {
@@ -985,7 +999,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.xl,
     borderRadius: radius.sm,
   },
-  backBtnText: { fontFamily: font.semi, color: BRAND.onNavy, fontSize: 15 },
+  backBtnText: { fontFamily: font.semi, color: '#ffffff', fontSize: 15 },
   banner: { padding: space.md, borderRadius: radius.sm, marginBottom: space.sm },
   bannerTitle: { fontFamily: font.semi, fontSize: 15, marginBottom: space.xs },
   bannerBody: { fontFamily: font.regular, fontSize: 13, lineHeight: 18 },
