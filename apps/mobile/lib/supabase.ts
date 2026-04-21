@@ -4,9 +4,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? ''
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? ''
+const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey)
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(supabaseUrl && supabaseAnonKey)
+  return hasSupabaseConfig
 }
 
 /** SSR / Node (Expo Router web static render): no `window`, no AsyncStorage session reads. */
@@ -138,5 +139,20 @@ function createWebClient(): SupabaseClient {
   })
 }
 
-export const supabase: SupabaseClient =
-  Platform.OS === 'web' ? createWebClient() : createMobileClient()
+function createFallbackClient(): SupabaseClient {
+  // Prevent launch-time crashes when EXPO_PUBLIC_SUPABASE_* is missing in release builds.
+  return createClient('https://placeholder.supabase.co', 'placeholder-anon-key', {
+    auth: {
+      storage: getAuthStorage(),
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  })
+}
+
+export const supabase: SupabaseClient = hasSupabaseConfig
+  ? Platform.OS === 'web'
+    ? createWebClient()
+    : createMobileClient()
+  : createFallbackClient()
