@@ -15,14 +15,23 @@
  *     (also grant yourself a Promotional Entitlement in RevenueCat dashboard)
  */
 
-import Purchases, {
-  LOG_LEVEL,
-  type CustomerInfo,
-  type PurchasesOffering,
-  type PurchasesPackage,
-} from 'react-native-purchases'
 import { Platform } from 'react-native'
-import PurchasesUI from 'react-native-purchases-ui'
+import type {
+  CustomerInfo,
+  PurchasesOffering,
+  PurchasesPackage,
+} from 'react-native-purchases'
+
+type PurchasesModule = typeof import('react-native-purchases')
+type PurchasesUIModule = typeof import('react-native-purchases-ui')
+
+async function loadPurchases(): Promise<PurchasesModule> {
+  return await import('react-native-purchases')
+}
+
+async function loadPurchasesUI(): Promise<PurchasesUIModule> {
+  return await import('react-native-purchases-ui')
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -70,8 +79,14 @@ function isConfigured(): boolean {
 export function initPurchases(userId: string): void {
   if (!isConfigured()) return
   try {
-    Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.DEBUG : LOG_LEVEL.ERROR)
-    Purchases.configure({ apiKey: RC_API_KEY, appUserID: userId })
+    // Fire-and-forget; keep caller sync for convenience.
+    // Lazy import prevents launch-time TurboModule crashes if RevenueCat is misconfigured.
+    void (async () => {
+      const mod = await loadPurchases()
+      const Purchases = mod.default
+      Purchases.setLogLevel(__DEV__ ? mod.LOG_LEVEL.DEBUG : mod.LOG_LEVEL.ERROR)
+      Purchases.configure({ apiKey: RC_API_KEY, appUserID: userId })
+    })()
   } catch {
     // Non-fatal: SDK may already be configured from a previous call
   }
@@ -109,6 +124,8 @@ export async function getEntitlementStatus(
   if (isOwnerAccount(email)) return 'active'
   if (!isConfigured()) return 'unknown'
   try {
+    const mod = await loadPurchases()
+    const Purchases = mod.default
     const info: CustomerInfo = await Purchases.getCustomerInfo()
     return info.entitlements.active[ENTITLEMENT_ID] ? 'active' : 'inactive'
   } catch {
@@ -122,6 +139,8 @@ export async function getEntitlementStatus(
 export async function getOfferings(): Promise<PurchasesOffering | null> {
   if (!isConfigured()) return null
   try {
+    const mod = await loadPurchases()
+    const Purchases = mod.default
     const offerings = await Purchases.getOfferings()
     return offerings.current ?? null
   } catch {
@@ -133,12 +152,16 @@ export async function getOfferings(): Promise<PurchasesOffering | null> {
 
 /** Initiates a StoreKit purchase flow for the given RC package. */
 export async function purchasePackage(pkg: PurchasesPackage): Promise<CustomerInfo> {
+  const mod = await loadPurchases()
+  const Purchases = mod.default
   const { customerInfo } = await Purchases.purchasePackage(pkg)
   return customerInfo
 }
 
 /** Restores previous App Store purchases and returns updated customer info. */
 export async function restorePurchases(): Promise<CustomerInfo> {
+  const mod = await loadPurchases()
+  const Purchases = mod.default
   return Purchases.restorePurchases()
 }
 
@@ -161,6 +184,8 @@ export async function presentRevenueCatPaywall(): Promise<
 > {
   if (!isConfigured()) return 'not_configured'
   try {
+    const mod = await loadPurchasesUI()
+    const PurchasesUI = mod.default
     // Present the default offering paywall configured in RevenueCat.
     const result = await PurchasesUI.presentPaywall()
     // Purchases UI returns a string-ish result on most platforms/versions.
@@ -183,6 +208,8 @@ export async function presentRevenueCatPaywall(): Promise<
  */
 export async function presentCustomerCenter(): Promise<'opened' | 'not_configured'> {
   if (!isConfigured()) return 'not_configured'
+  const mod = await loadPurchasesUI()
+  const PurchasesUI = mod.default
   await PurchasesUI.presentCustomerCenter()
   return 'opened'
 }
