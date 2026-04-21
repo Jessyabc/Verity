@@ -1,0 +1,53 @@
+name: iOS TestFlight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - '.github/workflows/ios-testflight.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+jobs:
+  build-and-submit:
+    name: Build & submit to TestFlight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Set up EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write App Store Connect API key
+        env:
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        working-directory: apps/mobile
+        run: |
+          if [ -z "$ASC_API_KEY_P8" ]; then
+            echo "::error::ASC_API_KEY_P8 secret is not set. Add the contents of AuthKey_H939KFWD58.p8 as a repo secret."
+            exit 1
+          fi
+          mkdir -p secrets
+          printf '%s' "$ASC_API_KEY_P8" > secrets/AuthKey_H939KFWD58.p8
+          chmod 600 secrets/AuthKey_H939KFWD58.p8
+
+      - name: Build iOS & auto-submit to TestFlight
+        working-directory: apps/mobile
+        run: eas build --platform ios --profile production --non-interactive --auto-submit

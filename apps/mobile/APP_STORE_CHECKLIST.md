@@ -109,7 +109,26 @@ eas submit --platform ios --profile production
 
 ---
 
-## 10. Versioning
+## 10. Auto-deploy from `main` (GitHub Actions → TestFlight)
+
+The workflow at [`.github/workflows/ios-testflight.yml`](../../.github/workflows/ios-testflight.yml)
+runs `eas build --platform ios --profile production --auto-submit` on every
+push to `main` that touches `apps/mobile/**`. It also supports manual runs via
+**Actions → iOS TestFlight → Run workflow**.
+
+Repo secrets required (**Settings → Secrets and variables → Actions**):
+
+- [ ] `EXPO_TOKEN` — personal access token from
+      [expo.dev → Account settings → Access tokens](https://expo.dev/settings/access-tokens).
+- [ ] `ASC_API_KEY_P8` — full text of your `AuthKey_H939KFWD58.p8` file
+      (including the `-----BEGIN/END PRIVATE KEY-----` lines).
+
+The `ascApiKeyId` / `ascApiKeyIssuerId` / `ascAppId` / `appleTeamId` values are
+already committed in [`eas.json`](./eas.json) and don't need to be secrets.
+
+---
+
+## 11. Versioning
 
 - [ ] **`version`** in `app.config.ts` updated for each **user-facing** release you want on the store.
 - [ ] iOS **build number** — your production profile uses EAS **autoIncrement**; otherwise bump manually when Apple rejects a binary.
