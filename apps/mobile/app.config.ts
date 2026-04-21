@@ -28,9 +28,9 @@ const config: ExpoConfig = {
   icon: './assets/images/icon.png',
   scheme: 'verity',
   userInterfaceStyle: 'automatic',
-  // Keep New Architecture off for TestFlight stability; some native deps can crash at launch.
-  // Re-enable once all native modules are verified New-Arch compatible.
-  newArchEnabled: false,
+  // React Native 0.81 + Reanimated 4 require New Architecture during pod install.
+  // If you hit launch crashes, fix the offending TurboModule rather than disabling New Arch.
+  newArchEnabled: true,
   splash: {
     image: './assets/images/splash-icon.png',
     resizeMode: 'contain',
