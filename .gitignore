@@ -33,3 +33,9 @@ supabase/.temp/
 
 # Expo (if CLI is run from repo root by mistake)
 .expo/
+
+# App Store Connect API key (never commit — used by EAS Submit)
+*.p8
+apps/mobile/secrets/*
+!apps/mobile/secrets/README.md
+!apps/mobile/secrets/.gitkeep
