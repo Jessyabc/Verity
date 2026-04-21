@@ -20,14 +20,17 @@ import type { ExpoConfig } from 'expo/config'
  */
 const config: ExpoConfig = {
   name: 'Verity',
-  slug: 'verity-mobile',
+  // Must match the slug of the EAS project referenced by `extra.eas.projectId`.
+  slug: 'verity-or-else',
   owner: 'jessyabc',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'verity',
   userInterfaceStyle: 'automatic',
-  newArchEnabled: true,
+  // Keep New Architecture off for TestFlight stability; some native deps can crash at launch.
+  // Re-enable once all native modules are verified New-Arch compatible.
+  newArchEnabled: false,
   splash: {
     image: './assets/images/splash-icon.png',
     resizeMode: 'contain',
@@ -72,11 +75,6 @@ const config: ExpoConfig = {
         origin: process.env.EXPO_PUBLIC_EXPO_ROUTER_ORIGIN ?? 'https://expo.dev',
       },
     ],
-    // RevenueCat — handles StoreKit / in-app purchases.
-    // Set EXPO_PUBLIC_REVENUECAT_API_KEY in EAS secrets (and locally in .env.local).
-    // Requires a native dev build — does NOT work in Expo Go.
-    // Run: eas build --platform ios --profile development
-    'react-native-purchases',
   ],
   experiments: {
     typedRoutes: true,
