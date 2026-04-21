@@ -29,11 +29,35 @@ Print this page (or export to PDF from your editor’s Markdown preview). Items 
 
 ## 4. EAS — credentials you must fill in
 
-Edit [`eas.json`](./eas.json) under `submit.production.ios`:
+### 4a. App Store Connect API key (recommended)
 
-- [ ] `appleId` — your Apple ID email  
-- [ ] `ascAppId` — App Store Connect numeric app ID  
-- [ ] `appleTeamId` — your Apple Developer Team ID  
+Using an ASC API key means EAS Submit uploads builds without prompting for
+your Apple ID password, and it works in CI.
+
+1. [ ] App Store Connect → **Users and Access → Integrations → App Store
+       Connect API** → **Generate API Key** (Access: *App Manager* or higher).
+2. [ ] Download the `.p8` file **(Apple only lets you download it once)** and
+       save it as
+       **`apps/mobile/secrets/AuthKey_XXXXXXXXXX.p8`**
+       (the directory is gitignored — see [`secrets/README.md`](./secrets/README.md)).
+3. [ ] Note the **Key ID** (shown next to the key) and **Issuer ID** (at the
+       top of the Integrations page).
+
+Then edit [`eas.json`](./eas.json) under `submit.production.ios`, replacing
+the placeholders:
+
+- [ ] `ascApiKeyPath` → `./secrets/AuthKey_<KEY_ID>.p8`
+- [ ] `ascApiKeyId` → your **Key ID**
+- [ ] `ascApiKeyIssuerId` → your **Issuer ID**
+- [ ] `ascAppId` → App Store Connect numeric **App ID** (App Information →
+      General Information → Apple ID — it's a number, not the bundle ID)
+- [ ] `appleTeamId` → your Apple Developer Team ID
+
+### 4b. Alternative — interactive Apple ID login
+
+If you'd rather skip the API key, remove the `ascApiKey*` fields from
+`eas.json` and add `"appleId": "<your-apple-id-email>"`. EAS Submit will
+prompt for your password / 2FA code on every submission.
 
 Reference: [EAS Submit — iOS](https://docs.expo.dev/submit/ios/)
 

@@ -29,9 +29,11 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "minijab25@gmail.com",
-        "ascAppId": "com.jessyabc.verity",
-        "appleTeamId": "9YA98754C2"
+        "appleTeamId": "9YA98754C2",
+        "ascAppId": "6761685819",
+        "ascApiKeyPath": "./secrets/AuthKey_BDPYVWPYM2.p8",
+        "ascApiKeyId": "BDPYVWPYM2",
+        "ascApiKeyIssuerId": "77a9aa22-388a-417f-b219-d3a23c102702"
       }
     }
   }
