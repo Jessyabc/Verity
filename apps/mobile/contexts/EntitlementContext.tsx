@@ -18,12 +18,10 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { AppState } from 'react-native'
 
 import { useAuth } from '@/contexts/AuthContext'
 import {
   getEntitlementStatus,
-  initPurchases,
   type EntitlementStatus,
 } from '@/lib/purchases'
 
@@ -61,30 +59,17 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
     }
   }, [user?.id, user?.email]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Init RevenueCat + first entitlement check when auth resolves
+  // Important: avoid calling RevenueCat native modules during app startup.
+  // A launch-time TurboModule abort (SIGABRT) is hard to recover from in JS.
+  // We keep startup safe and let the user continue; entitlement can be checked
+  // later (e.g. from a settings screen action or after a purchase).
   useEffect(() => {
     if (!authInitialized) return
 
-    if (!user) {
-      setStatus('unknown')
-      setLoading(false)
-      return
-    }
-
-    // Identify the user in RC using their Supabase UUID
-    initPurchases(user.id)
-    setLoading(true)
-    void check()
+    // Auth resolved; default to "unknown" (allowed through) without hitting RC.
+    setStatus('unknown')
+    setLoading(false)
   }, [user?.id, authInitialized]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Re-check whenever the app returns to the foreground
-  useEffect(() => {
-    if (!user) return
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void check()
-    })
-    return () => sub.remove()
-  }, [user?.id, check]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <EntitlementContext.Provider value={{ status, loading, refresh: check }}>
