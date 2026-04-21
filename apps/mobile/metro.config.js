@@ -46,11 +46,15 @@ function resolveFrom(root, pkg) {
 const config = getDefaultConfig(projectRoot)
 
 // Monorepo: watch shared folders and see hoisted deps at repo root
-config.watchFolders = [workspaceRoot]
-config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, 'node_modules'),
-  path.resolve(workspaceRoot, 'node_modules'),
-]
+// Keep Expo defaults, then extend for monorepo.
+config.watchFolders = Array.from(new Set([...(config.watchFolders ?? []), workspaceRoot]))
+config.resolver.nodeModulesPaths = Array.from(
+  new Set([
+    ...(config.resolver.nodeModulesPaths ?? []),
+    path.resolve(projectRoot, 'node_modules'),
+    path.resolve(workspaceRoot, 'node_modules'),
+  ]),
+)
 
 // One React instance — avoid invalid hook call from root + mobile versions
 config.resolver.extraNodeModules = {
