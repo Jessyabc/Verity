@@ -335,7 +335,7 @@ function NarrativeCard({
         />
       )}
       {glass === 'navy' ? (
-        <View style={[styles.narrativeMain, styles.narrativeMainCompany]}>
+        <View style={[styles.narrativeMain, { backgroundColor: brand.glassNavy }]}>
           <View style={styles.titleRow}>
             <View style={styles.narrTitleLead}>
               <VerityMark size={24} />
@@ -351,7 +351,7 @@ function NarrativeCard({
         </View>
       ) : (
         <View style={styles.narrativeMainMediaOuter}>
-          <View style={[StyleSheet.absoluteFillObject, styles.narrativeMainMediaBase]} />
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: brand.glassNavy }]} />
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: brand.glassTealWash }]} />
           <View style={styles.narrativeMain}>
             <View style={styles.titleRow}>
