@@ -50,4 +50,6 @@ jobs:
 
       - name: Build iOS & auto-submit to TestFlight
         working-directory: apps/mobile
-        run: eas build --platform ios --profile production --non-interactive --auto-submit
+        # Don't wait in GitHub Actions for the (often long) free-tier queue.
+        # This schedules the EAS build+submit and exits; track status in Expo dashboard.
+        run: eas build --platform ios --profile production --non-interactive --auto-submit --no-wait
