@@ -90,8 +90,16 @@ export default function SignInScreen() {
         <StatusBar style="light" />
         <Text style={[styles.title, { color: brand.onNavy }]}>Configure Supabase</Text>
         <Text style={[styles.hint, { color: brand.onNavyMuted }]}>
-          Copy apps/mobile/.env.example to apps/mobile/.env and set EXPO_PUBLIC_SUPABASE_URL and
-          EXPO_PUBLIC_SUPABASE_ANON_KEY, then restart Expo.
+          This build is missing Supabase environment variables.
+          {'\n\n'}
+          Local dev:
+          {'\n'}- Copy apps/mobile/.env.example → apps/mobile/.env (or repo-root .env.local)
+          {'\n'}- Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY
+          {'\n'}- Restart Expo
+          {'\n\n'}
+          TestFlight / EAS builds:
+          {'\n'}- Set EAS env vars for the “production” environment (same keys)
+          {'\n'}- Rebuild and reinstall the latest TestFlight build
         </Text>
       </View>
     )
