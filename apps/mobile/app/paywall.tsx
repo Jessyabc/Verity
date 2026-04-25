@@ -174,7 +174,7 @@ export default function PaywallScreen() {
           {TRIAL_DAYS} days free,{'\n'}then your plan.
         </Text>
         <Text style={[styles.subline, { color: BRAND.onNavyMuted }]}>
-          Cancel anytime before the trial ends and you won't be charged.
+          Cancel anytime before the trial ends and you will not be charged.
         </Text>
 
         {/* Value props */}

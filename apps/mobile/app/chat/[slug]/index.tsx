@@ -143,7 +143,7 @@ export default function ConversationListScreen() {
         <View style={styles.emptyState}>
           <Text style={[styles.emptyTitle, { color: colors.ink }]}>No conversations yet</Text>
           <Text style={[styles.emptyBody, { color: colors.inkSubtle }]}>
-            Start a new conversation to ask Afaqi about this company's research.
+            {"Start a new conversation to ask Afaqi about this company's research."}
           </Text>
         </View>
       ) : (
