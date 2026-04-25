@@ -56,7 +56,7 @@ export default function ConversationListScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: 'Afaqi · Conversations',
+      title: slug === '__portfolio__' ? 'Afaqi · Portfolio' : 'Afaqi · Conversations',
       headerTintColor: colors.accent,
       headerStyle: { backgroundColor: colors.surfaceSolid },
       headerTitleStyle: { fontFamily: font.semi, color: colors.ink, fontSize: 17 },
@@ -143,7 +143,9 @@ export default function ConversationListScreen() {
         <View style={styles.emptyState}>
           <Text style={[styles.emptyTitle, { color: colors.ink }]}>No conversations yet</Text>
           <Text style={[styles.emptyBody, { color: colors.inkSubtle }]}>
-            {"Start a new conversation to ask Afaqi about this company's research."}
+            {slug === '__portfolio__'
+              ? "Start a new conversation to ask Afaqi about your watchlist summary and portfolio context."
+              : "Start a new conversation to ask Afaqi about this company's research."}
           </Text>
         </View>
       ) : (

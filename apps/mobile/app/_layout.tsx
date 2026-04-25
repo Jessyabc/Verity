@@ -132,6 +132,14 @@ function AuthAwareStack() {
           }}
         />
         <Stack.Screen
+          name="afaqi"
+          options={{
+            headerShown: true,
+            headerBackTitle: 'Back',
+            ...stackScreenGesture,
+          }}
+        />
+        <Stack.Screen
           name="paywall"
           options={{
             presentation: 'fullScreenModal',

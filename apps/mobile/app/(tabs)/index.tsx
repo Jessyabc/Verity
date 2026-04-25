@@ -35,7 +35,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { font, radius, space } from '@/constants/theme'
 import { useAdaptiveBrand } from '@/hooks/useAdaptiveBrand'
 import { buildCompanyLogoCandidates } from '@/lib/companyLogo'
-import { formatAgo, formatUnknownError, getGreeting } from '@/lib/format'
+import { formatAgo, formatUnknownError, getGreetingForUser } from '@/lib/format'
 import { searchCompanies, type SearchCompanyRow } from '@/lib/companySearch'
 import { useWatchlistDigest } from '@/hooks/useWatchlistDigest'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
@@ -124,9 +124,10 @@ type DigestCardProps = {
   loading: boolean
   error: string | null
   onRefresh: () => void
+  onOpenChat: () => void
 }
 
-function DigestCard({ digest, loading, error, onRefresh }: DigestCardProps) {
+function DigestCard({ digest, loading, error, onRefresh, onOpenChat }: DigestCardProps) {
   const brand = useAdaptiveBrand()
   if (loading) {
     return (
@@ -187,8 +188,14 @@ function DigestCard({ digest, loading, error, onRefresh }: DigestCardProps) {
 
   // Has digest text
   return (
-    <BlurView intensity={28} tint="dark" style={styles.digestCard}>
-      <View style={[styles.digestCardInner, { backgroundColor: brand.glassNavy, borderColor: brand.stroke }]}>
+    <Pressable
+      style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}
+      onPress={onOpenChat}
+      accessibilityRole="button"
+      accessibilityLabel="Open portfolio chat"
+    >
+      <BlurView intensity={28} tint="dark" style={styles.digestCard}>
+        <View style={[styles.digestCardInner, { backgroundColor: brand.glassNavy, borderColor: brand.stroke }]}>
         <Text
           style={[styles.digestText, { color: brand.onNavyMuted }]}
           numberOfLines={4}
@@ -207,8 +214,9 @@ function DigestCard({ digest, loading, error, onRefresh }: DigestCardProps) {
             </Pressable>
           ) : null}
         </View>
-      </View>
-    </BlurView>
+        </View>
+      </BlurView>
+    </Pressable>
   )
 }
 
@@ -309,7 +317,7 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, atCap }: Search
                   },
                 ]}
               >
-                <Ionicons name="search" size={18} color={brand.onNavySubtle} style={styles.safariFieldIcon} />
+                <Ionicons name="search" size={32} color={brand.onNavySubtle} style={styles.safariFieldIcon} />
                 <TextInput
                   style={[styles.safariFieldInput, { color: brand.onNavy }]}
                   placeholder="Search or enter company…"
@@ -393,10 +401,10 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, atCap }: Search
                       ) : null}
                     </View>
                     {inList ? (
-                      <Ionicons name="bookmark" size={22} color={brand.tealLight} accessibilityLabel="On watchlist" />
+                      <Ionicons name="bookmark" size={36} color={brand.tealLight} accessibilityLabel="On watchlist" />
                     ) : (
                       <View style={styles.addToWatchRow}>
-                        <Ionicons name="add-circle-outline" size={22} color={brand.tealLight} />
+                        <Ionicons name="add-circle-outline" size={36} color={brand.tealLight} />
                         <Text style={[styles.addLabel, { color: brand.tealLight }]}>Add</Text>
                       </View>
                     )}
@@ -518,14 +526,17 @@ export default function WatchlistScreen() {
         ]}
       >
         <Pressable style={styles.menuBtn} onPress={openSidebar} hitSlop={10} accessibilityLabel="Open menu">
-          <Ionicons name="menu-outline" size={26} color={brand.tealLight} />
+          <Ionicons name="menu-outline" size={40} color={brand.tealLight} />
         </Pressable>
         <VerityMark size={28} />
         <View style={styles.headerCenter}>
           <Text style={[styles.headerTitle, { color: brand.onNavy }]}>Watchlist</Text>
           {user ? (
             <Text style={[styles.headerGreeting, { color: brand.onNavySubtle }]} numberOfLines={1}>
-              {getGreeting(user.email)}
+              {getGreetingForUser({
+                email: user.email,
+                username: (user.user_metadata as Record<string, unknown> | undefined)?.username as string | undefined,
+              })}
             </Text>
           ) : null}
         </View>
@@ -548,6 +559,7 @@ export default function WatchlistScreen() {
             loading={digestLoading}
             error={digestError}
             onRefresh={() => void refreshDigest()}
+            onOpenChat={() => router.push('/chat/__portfolio__')}
           />
         </View>
       ) : null}

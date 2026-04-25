@@ -20,6 +20,20 @@ export function getGreeting(email: string | null | undefined): string {
   return `${timeGreeting}, ${name}`
 }
 
+export function getGreetingForUser(params: {
+  email: string | null | undefined
+  username: string | null | undefined
+}): string {
+  const hour = new Date().getHours()
+  const timeGreeting =
+    hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+
+  const username = (params.username ?? '').trim()
+  if (username) return `${timeGreeting}, ${username}`
+
+  return getGreeting(params.email)
+}
+
 /**
  * Supabase `PostgrestError` and some API errors are plain objects, not `Error` instances.
  * Using `String(e)` shows "[object Object]" in UI — use this for user-visible messages.

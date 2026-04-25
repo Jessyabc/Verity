@@ -20,6 +20,12 @@ export type Conversation = {
   created_at: string
 }
 
+export type ConversationCompanyRow = {
+  slug: string
+  name: string
+  ticker: string | null
+}
+
 export type ChatMessageRow = {
   id: string
   conversation_id: string
@@ -50,6 +56,33 @@ export async function fetchConversations(slug: string): Promise<Conversation[]> 
 
   if (error) throw error
   return (data ?? []) as Conversation[]
+}
+
+/** Returns all conversations for the signed-in user across all slugs, newest first. */
+export async function fetchAllConversations(): Promise<Conversation[]> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('id, user_id, slug, title, last_message_at, created_at')
+    .order('last_message_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []) as Conversation[]
+}
+
+/** Best-effort lookup of company display info for slugs. */
+export async function fetchConversationCompaniesBySlugs(
+  slugs: string[],
+): Promise<ConversationCompanyRow[]> {
+  const clean = [...new Set(slugs)].filter(Boolean)
+  if (clean.length === 0) return []
+
+  const { data, error } = await supabase
+    .from('companies')
+    .select('slug, name, ticker')
+    .in('slug', clean)
+
+  if (error) throw error
+  return (data ?? []) as ConversationCompanyRow[]
 }
 
 /** Creates a new conversation and returns it. */

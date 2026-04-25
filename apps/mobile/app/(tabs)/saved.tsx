@@ -224,7 +224,7 @@ export default function SavedScreen() {
         ]}
       >
         <Pressable style={styles.menuBtn} onPress={openSidebar} hitSlop={10} accessibilityLabel="Open menu">
-          <Ionicons name="menu-outline" size={26} color={brand.tealLight} />
+          <Ionicons name="menu-outline" size={40} color={brand.tealLight} />
         </Pressable>
         <VerityMark size={28} />
         <Text style={[styles.headerTitle, { color: brand.onNavy }]}>Saved Links</Text>
@@ -279,7 +279,7 @@ export default function SavedScreen() {
                   </Text>
                 ) : null}
               </View>
-              <Ionicons name="chevron-forward" size={20} color={brand.tealLight} />
+              <Ionicons name="chevron-forward" size={34} color={brand.tealLight} />
             </Pressable>
           )}
           renderItem={({ item: group }) => (

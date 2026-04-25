@@ -119,7 +119,7 @@ export default function AccountSettingsScreen() {
         ]}
       >
         <Pressable style={styles.menuBtn} onPress={openSidebar} hitSlop={10} accessibilityLabel="Open menu">
-          <Ionicons name="menu-outline" size={26} color={brand.tealLight} />
+          <Ionicons name="menu-outline" size={40} color={brand.tealLight} />
         </Pressable>
         <VerityMark size={28} />
         <Text style={[styles.headerTitle, { color: brand.onNavy }]}>Account</Text>

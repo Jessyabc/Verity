@@ -131,6 +131,57 @@ function buildResearchContext(row: CacheRow): string {
   return lines.join('\n')
 }
 
+const PORTFOLIO_SLUG = '__portfolio__'
+
+function buildPortfolioContext(digestText: string, rows: CacheRow[]): string {
+  const lines: string[] = [
+    'PORTFOLIO CONTEXT (Watchlist)',
+    '',
+  ]
+
+  if (digestText.trim()) {
+    lines.push('LATEST PORTFOLIO DIGEST:')
+    lines.push(digestText.trim())
+    lines.push('')
+  } else {
+    lines.push('LATEST PORTFOLIO DIGEST: (not available yet)')
+    lines.push('')
+  }
+
+  if (rows.length === 0) {
+    lines.push('No company research cache rows were found for the current watchlist.')
+    lines.push('If the user asks for details, instruct them to run research on companies first.')
+    return lines.join('\n')
+  }
+
+  lines.push('WATCHLIST COMPANY RESEARCH (summaries):')
+  lines.push('')
+
+  for (const row of rows) {
+    const ticker = row.ticker ? ` (${row.ticker})` : ''
+    const items = Array.isArray(row.items) ? row.items.slice(0, 3) : []
+    lines.push(`COMPANY: ${row.company_name}${ticker}`)
+    lines.push(`Research last updated: ${new Date(row.fetched_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`)
+    if (items.length === 0) {
+      lines.push('RESEARCH SOURCES: (none cached yet)')
+      lines.push('')
+      continue
+    }
+    lines.push('RESEARCH SOURCES:')
+    items.forEach((item, i) => {
+      lines.push(`${i + 1}. ${item.title}`)
+      if (item.source) lines.push(`   Source: ${item.source}`)
+      if (item.published_at) lines.push(`   Date: ${item.published_at}`)
+      lines.push(`   URL: ${item.url}`)
+      if (item.snippet) lines.push(`   Summary: ${item.snippet}`)
+      lines.push('')
+    })
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}
+
 /** Returns true when a cache row is fresh enough to use directly (< 48 h old). */
 function isCacheFresh(fetchedAt: string): boolean {
   const age = Date.now() - new Date(fetchedAt).getTime()
@@ -354,18 +405,61 @@ Deno.serve(async (req: Request) => {
 
   const db = createClient(supabaseUrl, serviceKey)
 
-  // 1. Primary company research context
-  const { data: cacheRow } = await db
-    .from('company_research_cache')
-    .select('slug, company_name, ticker, items, fetched_at')
-    .eq('slug', slug)
-    .maybeSingle()
+  // 1. Primary context
+  let primaryContext = ''
+  let primaryCompanyName = slug
 
-  const primaryContext = cacheRow
-    ? buildResearchContext(cacheRow as CacheRow)
-    : `No research context found for "${slug}". Tell the user to run research on this company first from the company profile.`
+  if (slug === PORTFOLIO_SLUG) {
+    // Portfolio mode: use watchlist_digest + multiple company research caches
+    const { data: digestRow } = await db
+      .from('watchlist_digest')
+      .select('digest_text, slugs_snapshot, generated_at')
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-  const primaryCompanyName = (cacheRow as CacheRow | null)?.company_name ?? slug
+    const slugsFromDigest = Array.isArray(digestRow?.slugs_snapshot) ? digestRow!.slugs_snapshot : []
+
+    // Fallback to user_watchlist if digest not generated yet
+    const { data: watchRows } = slugsFromDigest.length === 0
+      ? await db
+        .from('user_watchlist')
+        .select('company_slug')
+        .eq('user_id', user.id)
+      : { data: null }
+
+    const slugs = (slugsFromDigest.length > 0
+      ? slugsFromDigest
+      : (watchRows ?? []).map((r: { company_slug: string }) => r.company_slug)
+    )
+      .filter((s: unknown): s is string => typeof s === 'string' && s.length > 0)
+      .slice(0, 12)
+
+    const { data: cacheRows } = slugs.length > 0
+      ? await db
+        .from('company_research_cache')
+        .select('slug, company_name, ticker, items, fetched_at')
+        .in('slug', slugs)
+      : { data: [] }
+
+    primaryContext = buildPortfolioContext(
+      typeof digestRow?.digest_text === 'string' ? digestRow.digest_text : '',
+      (cacheRows ?? []) as CacheRow[],
+    )
+    primaryCompanyName = 'User Portfolio'
+  } else {
+    // Company mode
+    const { data: cacheRow } = await db
+      .from('company_research_cache')
+      .select('slug, company_name, ticker, items, fetched_at')
+      .eq('slug', slug)
+      .maybeSingle()
+
+    primaryContext = cacheRow
+      ? buildResearchContext(cacheRow as CacheRow)
+      : `No research context found for "${slug}". Tell the user to run research on this company first from the company profile.`
+
+    primaryCompanyName = (cacheRow as CacheRow | null)?.company_name ?? slug
+  }
 
   // 2. Load conversation history (last 20 turns, ascending order)
   const { data: historyRows } = await db

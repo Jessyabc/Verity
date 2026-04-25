@@ -339,7 +339,7 @@ function NarrativeCard({
           <View style={styles.titleRow}>
             <View style={styles.narrTitleLead}>
               <VerityMark size={24} />
-              <Ionicons name="business-outline" size={20} color={brand.tealLight} style={styles.narrLeadIcon} />
+              <Ionicons name="business-outline" size={38} color={brand.tealLight} style={styles.narrLeadIcon} />
             </View>
             <Text style={[styles.narrTitle, { color: brand.onNavy }]}>{title}</Text>
             <View style={[styles.badge, { borderColor: brand.tealDark }]}>
@@ -356,7 +356,7 @@ function NarrativeCard({
           <View style={styles.narrativeMain}>
             <View style={styles.titleRow}>
               <View style={styles.narrTitleLead}>
-                <Ionicons name="newspaper-outline" size={22} color={brand.tealLight} style={styles.narrLeadIcon} />
+                <Ionicons name="newspaper-outline" size={40} color={brand.tealLight} style={styles.narrLeadIcon} />
               </View>
               <Text style={[styles.narrTitle, { color: brand.onNavy }]}>{title}</Text>
               <View style={[styles.badge, { borderColor: brand.tealDark }]}>
@@ -556,7 +556,7 @@ export default function CompanyScreen() {
           >
             <Ionicons
               name={onWatchlist ? 'bookmark' : 'bookmark-outline'}
-              size={22}
+              size={38}
               color={onWatchlist ? brand.tealLight : brand.onNavySubtle}
             />
           </LiquidGlassHeaderIconButton>

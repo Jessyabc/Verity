@@ -189,7 +189,7 @@ function AssistantBubble({
               ) : (
                 <Ionicons
                   name={isPlaying ? 'stop-circle-outline' : 'volume-medium'}
-                  size={20}
+                  size={36}
                   color={colors.accent}
                 />
               )}
@@ -200,7 +200,7 @@ function AssistantBubble({
               accessibilityRole="button"
               accessibilityLabel="Copy message"
             >
-              <Ionicons name="copy-outline" size={20} color={colors.accent} />
+              <Ionicons name="copy-outline" size={36} color={colors.accent} />
             </Pressable>
           </View>
         ) : null}
@@ -281,7 +281,8 @@ export default function ChatScreen() {
   const colors = useVerityPalette()
   const { user } = useAuth()
 
-  const [companyName, setCompanyName] = useState<string>(slug)
+  const isPortfolio = slug === '__portfolio__'
+  const [companyName, setCompanyName] = useState<string>(isPortfolio ? 'Your Watchlist' : slug)
   /** Extra company names loaded into context during this session (for context pill). */
   const [extraCompanyNames, setExtraCompanyNames] = useState<string[]>([])
   const [messages, setMessages] = useState<Message[]>([])
@@ -352,11 +353,13 @@ export default function ChatScreen() {
     if (!slug || !conversationId) return
 
     void (async () => {
-      try {
-        // Load company name from research cache
-        const r = await fetchResearchCacheRow(slug)
-        if (r?.company_name) setCompanyName(r.company_name)
-      } catch { /* non-critical */ }
+      if (!isPortfolio) {
+        try {
+          // Load company name from research cache
+          const r = await fetchResearchCacheRow(slug)
+          if (r?.company_name) setCompanyName(r.company_name)
+        } catch { /* non-critical */ }
+      }
 
       try {
         const rows = await fetchMessages(conversationId)
@@ -366,14 +369,16 @@ export default function ChatScreen() {
           setHasOlderMessages(rows.length >= 20)
         } else {
           // Fresh conversation — seed a welcome message (not persisted to DB)
-          const itemCount = (await fetchResearchCacheRow(slug))?.items?.length ?? 0
-          const compName = (await fetchResearchCacheRow(slug))?.company_name ?? slug
+          const itemCount = isPortfolio ? 0 : (await fetchResearchCacheRow(slug))?.items?.length ?? 0
+          const compName = isPortfolio ? 'your watchlist' : (await fetchResearchCacheRow(slug))?.company_name ?? slug
           setMessages([{
             id: 'welcome',
             role: 'assistant',
-            content: itemCount > 0
-              ? `I have ${itemCount} research source${itemCount === 1 ? '' : 's'} loaded for ${compName}. What would you like to explore?`
-              : `No research has been run for ${slug} yet. Go back to the company profile and hit "Refresh" first, then return here.`,
+            content: isPortfolio
+              ? "Ask me anything about your watchlist summary — themes, risks, cross-company comparisons, or what to dig into next."
+              : itemCount > 0
+                ? `I have ${itemCount} research source${itemCount === 1 ? '' : 's'} loaded for ${compName}. What would you like to explore?`
+                : `No research has been run for ${slug} yet. Go back to the company profile and hit "Refresh" first, then return here.`,
           }])
         }
       } catch { /* non-critical */ }
@@ -464,7 +469,7 @@ export default function ChatScreen() {
   // Context pill label
   const contextLabel = extraCompanyNames.length > 0
     ? `${companyName} + ${extraCompanyNames.join(', ')}`
-    : `${companyName} research`
+    : isPortfolio ? 'Portfolio context' : `${companyName} research`
 
   return (
     <KeyboardAvoidingView

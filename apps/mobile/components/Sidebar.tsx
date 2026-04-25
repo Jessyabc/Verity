@@ -187,11 +187,13 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
 const NAV_ITEMS = [
   { icon: 'list-outline' as const, label: 'Watchlist', route: '/(tabs)' as const, tabKey: 'index' as const },
+  { icon: 'chatbubbles-outline' as const, label: 'Afaqi', route: '/afaqi' as const, tabKey: 'afaqi' as const },
   { icon: 'bookmark-outline' as const, label: 'Saved', route: '/(tabs)/saved' as const, tabKey: 'saved' as const },
   { icon: 'person-outline' as const, label: 'Account', route: '/(tabs)/settings' as const, tabKey: 'settings' as const },
 ] as const
 
 function sidebarActiveTab(segments: string[]): (typeof NAV_ITEMS)[number]['tabKey'] {
+  if (segments.includes('afaqi')) return 'afaqi'
   if (segments.includes('saved')) return 'saved'
   if (segments.includes('settings')) return 'settings'
   return 'index'
@@ -248,7 +250,7 @@ function SidebarPanel({ onNavigate }: { onNavigate: () => void }) {
                   >
                     <Ionicons
                       name={item.icon}
-                      size={22}
+                      size={38}
                       color={active ? BRAND.tealLight : BRAND.onNavyMuted}
                     />
                     <Text
@@ -271,7 +273,7 @@ function SidebarPanel({ onNavigate }: { onNavigate: () => void }) {
                 style={({ pressed }) => [styles.feedbackBtn, { opacity: pressed ? 0.72 : 1 }]}
                 onPress={() => setFeedbackOpen(true)}
               >
-                <Ionicons name="chatbox-ellipses-outline" size={18} color={BRAND.tealLight} />
+                <Ionicons name="chatbox-ellipses-outline" size={34} color={BRAND.tealLight} />
                 <Text style={[styles.feedbackLabel, { color: BRAND.onNavy }]}>Feedback</Text>
               </Pressable>
 
