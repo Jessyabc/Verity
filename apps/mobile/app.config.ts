@@ -67,6 +67,7 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-audio',
+    'react-native-purchases',
     [
       'expo-router',
       {
