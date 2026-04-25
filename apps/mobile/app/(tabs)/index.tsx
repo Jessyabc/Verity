@@ -48,6 +48,7 @@ import {
   type WatchlistCompanyRow,
 } from '@/lib/watchlistApi'
 import { fetchResearchCacheRowsForSlugs, type CompanyResearchRow } from '@/lib/researchCache'
+import { createConversation } from '@/lib/chatApi'
 
 const WATCHLIST_CAP = 15
 
@@ -195,25 +196,39 @@ function DigestCard({ digest, loading, error, onRefresh, onOpenChat }: DigestCar
       accessibilityLabel="Open portfolio chat"
     >
       <BlurView intensity={28} tint="dark" style={styles.digestCard}>
-        <View style={[styles.digestCardInner, { backgroundColor: brand.glassNavy, borderColor: brand.stroke }]}>
-        <Text
-          style={[styles.digestText, { color: brand.onNavyMuted }]}
-          numberOfLines={4}
+        <View
+          style={[
+            styles.digestCardInner,
+            { backgroundColor: brand.glassNavy, borderColor: brand.tealLight },
+          ]}
         >
-          {digest.digest_text}
-        </Text>
-        <View style={styles.digestFooter}>
-          <Text style={[styles.digestMeta, { color: brand.onNavySubtle }]}>
-            {digest.is_generating
-              ? 'Updating…'
-              : `Updated ${formatAgo(digest.generated_at)}`}
+          <View style={styles.digestKickerRow}>
+            <View style={[styles.digestDot, { backgroundColor: brand.tealLight }]} />
+            <Text style={[styles.digestKicker, { color: brand.tealLight }]}>
+              PORTFOLIO BRIEF
+            </Text>
+            <Text style={[styles.digestKickerHint, { color: brand.onNavySubtle }]}>
+              Tap to chat
+            </Text>
+          </View>
+          <Text
+            style={[styles.digestText, { color: brand.onNavy }]}
+            numberOfLines={4}
+          >
+            {digest.digest_text}
           </Text>
-          {!digest.is_generating ? (
-            <Pressable onPress={onRefresh} hitSlop={10} accessibilityLabel="Refresh summary">
-              <Text style={[styles.digestRefreshBtn, { color: brand.tealLight }]}>Refresh</Text>
-            </Pressable>
-          ) : null}
-        </View>
+          <View style={styles.digestFooter}>
+            <Text style={[styles.digestMeta, { color: brand.onNavySubtle }]}>
+              {digest.is_generating
+                ? 'Updating…'
+                : `Updated ${formatAgo(digest.generated_at)}`}
+            </Text>
+            {!digest.is_generating ? (
+              <Pressable onPress={onRefresh} hitSlop={10} accessibilityLabel="Refresh summary">
+                <Text style={[styles.digestRefreshBtn, { color: brand.tealLight }]}>Refresh</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
       </BlurView>
     </Pressable>
@@ -317,7 +332,7 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, atCap }: Search
                   },
                 ]}
               >
-                <Ionicons name="search" size={32} color={brand.onNavySubtle} style={styles.safariFieldIcon} />
+                <Ionicons name="search" size={18} color={brand.onNavySubtle} style={styles.safariFieldIcon} />
                 <TextInput
                   style={[styles.safariFieldInput, { color: brand.onNavy }]}
                   placeholder="Search or enter company…"
@@ -401,10 +416,10 @@ function SearchModal({ visible, onClose, onSelect, currentSlugs, atCap }: Search
                       ) : null}
                     </View>
                     {inList ? (
-                      <Ionicons name="bookmark" size={36} color={brand.tealLight} accessibilityLabel="On watchlist" />
+                      <Ionicons name="bookmark" size={20} color={brand.tealLight} accessibilityLabel="On watchlist" />
                     ) : (
                       <View style={styles.addToWatchRow}>
-                        <Ionicons name="add-circle-outline" size={36} color={brand.tealLight} />
+                        <Ionicons name="add-circle-outline" size={20} color={brand.tealLight} />
                         <Text style={[styles.addLabel, { color: brand.tealLight }]}>Add</Text>
                       </View>
                     )}
@@ -501,6 +516,20 @@ export default function WatchlistScreen() {
     }
   }
 
+  const openPortfolioChat = useCallback(async () => {
+    if (!user) {
+      router.push('/chat/__portfolio__')
+      return
+    }
+    try {
+      const convo = await createConversation(user.id, '__portfolio__')
+      router.push(`/chat/__portfolio__/${convo.id}`)
+    } catch {
+      // Fall back to the conversation list if the insert fails.
+      router.push('/chat/__portfolio__')
+    }
+  }, [user, router])
+
   const handleRemove = async (slug: string) => {
     try {
       await deleteWatchlistSlug(supabase, slug)
@@ -526,9 +555,9 @@ export default function WatchlistScreen() {
         ]}
       >
         <Pressable style={styles.menuBtn} onPress={openSidebar} hitSlop={10} accessibilityLabel="Open menu">
-          <Ionicons name="menu-outline" size={40} color={brand.tealLight} />
+          <Ionicons name="menu-outline" size={28} color={brand.tealLight} />
         </Pressable>
-        <VerityMark size={28} />
+        <VerityMark size={36} />
         <View style={styles.headerCenter}>
           <Text style={[styles.headerTitle, { color: brand.onNavy }]}>Watchlist</Text>
           {user ? (
@@ -559,7 +588,7 @@ export default function WatchlistScreen() {
             loading={digestLoading}
             error={digestError}
             onRefresh={() => void refreshDigest()}
-            onOpenChat={() => router.push('/chat/__portfolio__')}
+            onOpenChat={() => void openPortfolioChat()}
           />
         </View>
       ) : null}
@@ -685,11 +714,27 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   digestCardInner: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderRadius: radius.md,
     paddingVertical: space.md,
     paddingHorizontal: space.md,
     gap: space.sm,
+  },
+  digestKickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+  },
+  digestDot: { width: 6, height: 6, borderRadius: 3 },
+  digestKicker: {
+    fontFamily: font.bold,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    flex: 1,
+  },
+  digestKickerHint: {
+    fontFamily: font.medium,
+    fontSize: 11,
   },
   digestText: { fontFamily: font.regular, fontSize: 13, lineHeight: 19 },
   digestFooter: {

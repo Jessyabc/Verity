@@ -29,6 +29,7 @@ const PORTFOLIO_SLUG = '__portfolio__'
 type Section = {
   slug: string
   title: string
+  subtitle: string | null
   data: Conversation[]
   /** Used for sorting sections (portfolio pinned separately). */
   sortKey: string
@@ -78,9 +79,12 @@ export default function AfaqiAllConversationsScreen() {
     setError(null)
     try {
       const rows = await fetchAllConversations()
-      setConversations(rows)
+      // Hide conversations that never had an exchange — title is set only after
+      // the first user/assistant pair, so untitled threads are placeholder-only.
+      const withExchanges = rows.filter((r) => typeof r.title === 'string' && r.title.trim().length > 0)
+      setConversations(withExchanges)
 
-      const slugs = rows
+      const slugs = withExchanges
         .map((r) => r.slug)
         .filter((s): s is string => typeof s === 'string' && s.length > 0 && s !== PORTFOLIO_SLUG)
 
@@ -135,17 +139,22 @@ export default function AfaqiAllConversationsScreen() {
       if (slug === PORTFOLIO_SLUG) {
         out.push({
           slug,
-          title: 'Portfolio Summary',
+          title: 'Your portfolio',
+          subtitle: 'Watchlist summary chat',
           data: list,
           sortKey,
         })
         continue
       }
       const company = companyMap.get(slug)
-      const title = company
-        ? `${company.name}${company.ticker ? ` (${company.ticker})` : ''}`
-        : slug.replace(/-/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase())
-      out.push({ slug, title, data: list, sortKey })
+      const title = company?.name ?? slug.replace(/-/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase())
+      out.push({
+        slug,
+        title,
+        subtitle: company?.ticker ?? null,
+        data: list,
+        sortKey,
+      })
     }
 
     out.sort((a, b) => {
@@ -206,27 +215,51 @@ export default function AfaqiAllConversationsScreen() {
           ItemSeparatorComponent={() => (
             <View style={[styles.separator, { backgroundColor: colors.stroke }]} />
           )}
-          renderSectionHeader={({ section }) => (
-            <Pressable
-              style={({ pressed }) => [
-                styles.sectionHeader,
-                {
-                  backgroundColor: pressed ? colors.accentSoft : 'transparent',
-                  borderTopColor: colors.stroke,
-                },
-              ]}
-              onPress={() => router.push(`/chat/${section.slug}`)}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${section.title} conversations`}
-            >
-              <Text style={[styles.sectionTitle, { color: colors.ink }]} numberOfLines={1}>
-                {section.title}
-              </Text>
-              <Text style={[styles.sectionHint, { color: colors.inkSubtle }]}>
-                See all →
-              </Text>
-            </Pressable>
-          )}
+          renderSectionHeader={({ section }) => {
+            const isPortfolio = section.slug === PORTFOLIO_SLUG
+            return (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.sectionHeader,
+                  isPortfolio
+                    ? {
+                        backgroundColor: pressed ? colors.accentSoft : 'transparent',
+                        borderLeftColor: colors.accent,
+                        borderLeftWidth: 3,
+                      }
+                    : {
+                        backgroundColor: pressed ? colors.accentSoft : 'transparent',
+                        borderTopColor: colors.stroke,
+                        borderTopWidth: StyleSheet.hairlineWidth,
+                      },
+                ]}
+                onPress={() => router.push(`/chat/${section.slug}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${section.title} conversations`}
+              >
+                <View style={styles.sectionHeaderText}>
+                  <Text
+                    style={[
+                      styles.sectionTitle,
+                      { color: colors.ink },
+                      isPortfolio && { color: colors.accent },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {section.title}
+                  </Text>
+                  {section.subtitle ? (
+                    <Text style={[styles.sectionSubtitle, { color: colors.inkSubtle }]} numberOfLines={1}>
+                      {section.subtitle}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={[styles.sectionHint, { color: colors.inkSubtle }]}>
+                  See all
+                </Text>
+              </Pressable>
+            )
+          }}
           renderItem={({ item, section }) => (
             <Pressable
               style={({ pressed }) => [
@@ -237,11 +270,12 @@ export default function AfaqiAllConversationsScreen() {
               ]}
               onPress={() => router.push(`/chat/${section.slug}/${item.id}`)}
               accessibilityRole="button"
-              accessibilityLabel={`Open conversation ${item.title ?? 'New conversation'}`}
+              accessibilityLabel={`Open conversation ${item.title ?? ''}`}
             >
+              <View style={[styles.rowRail, { backgroundColor: colors.stroke }]} />
               <View style={styles.rowBody}>
-                <Text style={[styles.rowTitle, { color: colors.ink }]} numberOfLines={1}>
-                  {item.title ?? 'New conversation'}
+                <Text style={[styles.rowTitle, { color: colors.inkMuted }]} numberOfLines={1}>
+                  {item.title}
                 </Text>
                 <Text style={[styles.rowMeta, { color: colors.inkSubtle }]}>
                   {formatWhen(item.last_message_at)}
@@ -271,7 +305,7 @@ export default function AfaqiAllConversationsScreen() {
           {creating ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (
-            <Text style={styles.fabText}>+ New conversation</Text>
+            <Text style={styles.fabText}>+ New portfolio chat</Text>
           )}
         </Pressable>
       ) : null}
@@ -313,29 +347,40 @@ const styles = StyleSheet.create({
 
   sectionHeader: {
     paddingHorizontal: space.lg,
-    paddingVertical: space.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: space.lg,
+    paddingBottom: space.sm,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: space.sm,
+    marginTop: space.sm,
   },
-  sectionTitle: { fontFamily: font.semi, fontSize: 15, flex: 1 },
-  sectionHint: { fontFamily: font.medium, fontSize: 12 },
+  sectionHeaderText: { flex: 1, minWidth: 0 },
+  sectionTitle: { fontFamily: font.bold, fontSize: 19, letterSpacing: -0.4 },
+  sectionSubtitle: { fontFamily: font.medium, fontSize: 12, marginTop: 1, letterSpacing: 0.2 },
+  sectionHint: { fontFamily: font.medium, fontSize: 12, paddingBottom: 2 },
 
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: space.lg,
-    paddingVertical: space.md + 2,
+    paddingLeft: space.xl + space.xs,
+    paddingRight: space.lg,
+    paddingVertical: space.sm + 2,
     gap: space.sm,
   },
+  rowRail: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: space.lg + space.sm,
+    width: StyleSheet.hairlineWidth,
+  },
   rowBody: { flex: 1, minWidth: 0 },
-  rowTitle: { fontFamily: font.medium, fontSize: 15 },
-  rowMeta: { fontFamily: font.regular, fontSize: 12, marginTop: 2 },
-  rowChevron: { fontFamily: font.regular, fontSize: 22 },
+  rowTitle: { fontFamily: font.regular, fontSize: 14 },
+  rowMeta: { fontFamily: font.regular, fontSize: 11, marginTop: 1 },
+  rowChevron: { fontFamily: font.regular, fontSize: 18 },
 
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: space.lg },
+  separator: { height: 0, marginLeft: 0 },
 
   fab: {
     position: 'absolute',

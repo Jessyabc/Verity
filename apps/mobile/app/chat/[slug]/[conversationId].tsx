@@ -35,6 +35,7 @@ import { openUrl } from '@/lib/openUrl'
 import { supabase } from '@/lib/supabase'
 import { font, radius, space } from '@/constants/theme'
 import { fetchMessages, fetchOlderMessages, type ChatMessageRow } from '@/lib/chatApi'
+import { fetchWatchlistDigest } from '@/lib/watchlistDigest'
 import { speakAfaqiMessage, stopAfaqiSpeech } from '@/lib/afaqiSpeech'
 
 // ---------------------------------------------------------------------------
@@ -189,7 +190,7 @@ function AssistantBubble({
               ) : (
                 <Ionicons
                   name={isPlaying ? 'stop-circle-outline' : 'volume-medium'}
-                  size={36}
+                  size={20}
                   color={colors.accent}
                 />
               )}
@@ -200,7 +201,7 @@ function AssistantBubble({
               accessibilityRole="button"
               accessibilityLabel="Copy message"
             >
-              <Ionicons name="copy-outline" size={36} color={colors.accent} />
+              <Ionicons name="copy-outline" size={20} color={colors.accent} />
             </Pressable>
           </View>
         ) : null}
@@ -367,25 +368,41 @@ export default function ChatScreen() {
           setMessages(rows.map(rowToMessage))
           // If we got a full page back, there might be older messages
           setHasOlderMessages(rows.length >= 20)
-        } else {
-          // Fresh conversation — seed a welcome message (not persisted to DB)
-          const itemCount = isPortfolio ? 0 : (await fetchResearchCacheRow(slug))?.items?.length ?? 0
-          const compName = isPortfolio ? 'your watchlist' : (await fetchResearchCacheRow(slug))?.company_name ?? slug
+        } else if (isPortfolio) {
+          // Portfolio mode: open with the full watchlist digest so the user sees
+          // the summary they tapped on, then can ask follow-ups.
+          let digestText = ''
+          if (user?.id) {
+            try {
+              const digest = await fetchWatchlistDigest(user.id)
+              digestText = (digest?.digest_text ?? '').trim()
+            } catch { /* non-critical */ }
+          }
           setMessages([{
             id: 'welcome',
             role: 'assistant',
-            content: isPortfolio
-              ? "Ask me anything about your watchlist summary — themes, risks, cross-company comparisons, or what to dig into next."
-              : itemCount > 0
-                ? `I have ${itemCount} research source${itemCount === 1 ? '' : 's'} loaded for ${compName}. What would you like to explore?`
-                : `No research has been run for ${slug} yet. Go back to the company profile and hit "Refresh" first, then return here.`,
+            content: digestText
+              ? `${digestText}\n\nAsk me anything about this — themes, risks, cross-company comparisons, or what to dig into next.`
+              : 'Your portfolio summary is not ready yet. Pull up the watchlist and tap to generate it, then come back.',
+          }])
+        } else {
+          // Fresh company conversation — seed a contextual welcome
+          const cache = await fetchResearchCacheRow(slug)
+          const itemCount = cache?.items?.length ?? 0
+          const compName = cache?.company_name ?? slug
+          setMessages([{
+            id: 'welcome',
+            role: 'assistant',
+            content: itemCount > 0
+              ? `I have ${itemCount} research source${itemCount === 1 ? '' : 's'} loaded for ${compName}. What would you like to explore?`
+              : `No research has been run for ${slug} yet. Go back to the company profile and hit "Refresh" first, then return here.`,
           }])
         }
       } catch { /* non-critical */ }
 
       setHistoryReady(true)
     })()
-  }, [slug, conversationId])
+  }, [slug, conversationId, isPortfolio, user?.id])
 
   /** Load older messages when the user scrolls to the top. */
   const loadOlderMessages = useCallback(async () => {

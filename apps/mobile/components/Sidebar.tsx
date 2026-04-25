@@ -186,10 +186,34 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 // ─── Nav items ────────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
-  { icon: 'list-outline' as const, label: 'Watchlist', route: '/(tabs)' as const, tabKey: 'index' as const },
-  { icon: 'chatbubbles-outline' as const, label: 'Afaqi', route: '/afaqi' as const, tabKey: 'afaqi' as const },
-  { icon: 'bookmark-outline' as const, label: 'Saved', route: '/(tabs)/saved' as const, tabKey: 'saved' as const },
-  { icon: 'person-outline' as const, label: 'Account', route: '/(tabs)/settings' as const, tabKey: 'settings' as const },
+  {
+    icon: 'list-outline' as const,
+    iconActive: 'list' as const,
+    label: 'Watchlist',
+    route: '/(tabs)' as const,
+    tabKey: 'index' as const,
+  },
+  {
+    icon: 'chatbubbles-outline' as const,
+    iconActive: 'chatbubbles' as const,
+    label: 'Afaqi',
+    route: '/afaqi' as const,
+    tabKey: 'afaqi' as const,
+  },
+  {
+    icon: 'bookmark-outline' as const,
+    iconActive: 'bookmark' as const,
+    label: 'Saved',
+    route: '/(tabs)/saved' as const,
+    tabKey: 'saved' as const,
+  },
+  {
+    icon: 'person-outline' as const,
+    iconActive: 'person' as const,
+    label: 'Account',
+    route: '/(tabs)/settings' as const,
+    tabKey: 'settings' as const,
+  },
 ] as const
 
 function sidebarActiveTab(segments: string[]): (typeof NAV_ITEMS)[number]['tabKey'] {
@@ -245,14 +269,22 @@ function SidebarPanel({ onNavigate }: { onNavigate: () => void }) {
                 return (
                   <Pressable
                     key={item.route}
-                    style={({ pressed }) => [styles.navItem, { opacity: pressed ? 0.72 : 1 }]}
+                    style={({ pressed }) => [
+                      styles.navItem,
+                      active && {
+                        backgroundColor: BRAND.glassTealWash,
+                      },
+                      { opacity: pressed ? 0.72 : 1 },
+                    ]}
                     onPress={() => navigate(item.route)}
                   >
-                    <Ionicons
-                      name={item.icon}
-                      size={38}
-                      color={active ? BRAND.tealLight : BRAND.onNavyMuted}
-                    />
+                    <View style={styles.navIconWrap}>
+                      <Ionicons
+                        name={active ? item.iconActive : item.icon}
+                        size={20}
+                        color={active ? BRAND.tealLight : BRAND.onNavyMuted}
+                      />
+                    </View>
                     <Text
                       style={[
                         styles.navLabel,
@@ -273,7 +305,7 @@ function SidebarPanel({ onNavigate }: { onNavigate: () => void }) {
                 style={({ pressed }) => [styles.feedbackBtn, { opacity: pressed ? 0.72 : 1 }]}
                 onPress={() => setFeedbackOpen(true)}
               >
-                <Ionicons name="chatbox-ellipses-outline" size={34} color={BRAND.tealLight} />
+                <Ionicons name="chatbox-ellipses-outline" size={18} color={BRAND.tealLight} />
                 <Text style={[styles.feedbackLabel, { color: BRAND.onNavy }]}>Feedback</Text>
               </Pressable>
 
@@ -487,8 +519,15 @@ const styles = StyleSheet.create({
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.md,
-    paddingVertical: 13,
+    gap: space.sm + 2,
+    paddingVertical: 11,
+    paddingHorizontal: space.sm,
+    borderRadius: 10,
+    marginHorizontal: -space.sm,
+  },
+  navIconWrap: {
+    width: 24,
+    alignItems: 'center',
   },
   navLabel: {
     fontFamily: font.semi,

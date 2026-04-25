@@ -68,7 +68,8 @@ export default function ConversationListScreen() {
     setError(null)
     try {
       const list = await fetchConversations(slug)
-      setConversations(list)
+      // Hide conversations that never had an exchange (no title yet).
+      setConversations(list.filter((c) => typeof c.title === 'string' && c.title.trim().length > 0))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load conversations')
     } finally {
@@ -183,7 +184,7 @@ export default function ConversationListScreen() {
               >
                 <View style={styles.rowBody}>
                   <Text style={[styles.rowTitle, { color: colors.ink }]} numberOfLines={1}>
-                    {item.title ?? 'New conversation'}
+                    {item.title}
                   </Text>
                   <Text style={[styles.rowDate, { color: colors.inkSubtle }]}>
                     {formatDate(item.last_message_at)}
