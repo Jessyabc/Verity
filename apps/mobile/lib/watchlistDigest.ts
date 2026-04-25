@@ -27,12 +27,21 @@ export async function fetchWatchlistDigest(userId: string): Promise<WatchlistDig
   return data ? (data as WatchlistDigestRow) : null
 }
 
-/** Fire-and-forget: invoke the Edge Function to regenerate the digest. */
+/**
+ * Invoke the Edge Function to regenerate the digest.
+ * Throws if the function returned an error so callers can surface it instead of
+ * silently failing — `supabase.functions.invoke` does NOT throw on HTTP errors;
+ * it returns `{ data, error }` and a non-2xx response leaves `error` populated.
+ */
 export async function triggerDigestRegeneration(slugs: string[]): Promise<void> {
   if (slugs.length === 0) return
-  await supabase.functions.invoke('generate-watchlist-digest', {
+  const { data, error } = await supabase.functions.invoke('generate-watchlist-digest', {
     body: { slugs },
   })
+  if (error) {
+    const detail = (data as { error?: string } | null)?.error
+    throw new Error(detail ? `${error.message}: ${detail}` : error.message)
+  }
 }
 
 /** Returns true if the digest should be regenerated. */

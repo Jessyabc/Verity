@@ -122,10 +122,11 @@ function CompanyCard({ company, research, logoCandidates, brand, onPress, onRemo
 type DigestCardProps = {
   digest: import('@/lib/watchlistDigest').WatchlistDigestRow | null
   loading: boolean
+  error: string | null
   onRefresh: () => void
 }
 
-function DigestCard({ digest, loading, onRefresh }: DigestCardProps) {
+function DigestCard({ digest, loading, error, onRefresh }: DigestCardProps) {
   const brand = useAdaptiveBrand()
   if (loading) {
     return (
@@ -145,6 +146,24 @@ function DigestCard({ digest, loading, onRefresh }: DigestCardProps) {
           Preparing your portfolio summary…
         </Text>
       </View>
+    )
+  }
+
+  // Error state — failure visible, tap to retry
+  if (error && !digest?.digest_text) {
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          styles.digestPrompt,
+          { borderColor: brand.stroke, opacity: pressed ? 0.7 : 1 },
+        ]}
+        onPress={onRefresh}
+        accessibilityLabel="Retry portfolio summary"
+      >
+        <Text style={[styles.digestPromptText, { color: brand.onNavyMuted }]} numberOfLines={2}>
+          Couldn{'’'}t generate summary: {error}. Tap to retry.
+        </Text>
+      </Pressable>
     )
   }
 
@@ -412,6 +431,7 @@ export default function WatchlistScreen() {
   const {
     digest,
     loading: digestLoading,
+    error: digestError,
     refresh: refreshDigest,
   } = useWatchlistDigest(user?.id ?? null, slugs)
 
@@ -526,6 +546,7 @@ export default function WatchlistScreen() {
           <DigestCard
             digest={digest}
             loading={digestLoading}
+            error={digestError}
             onRefresh={() => void refreshDigest()}
           />
         </View>

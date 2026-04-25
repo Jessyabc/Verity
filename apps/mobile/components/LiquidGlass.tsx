@@ -124,10 +124,10 @@ export function LiquidGlassPressable({
   return (
     <Pressable
       {...rest}
-      style={({ pressed, hovered }) => [
+      style={({ pressed }) => [
         dark ? styles.shadowDark : styles.shadowLight,
         { borderRadius: radius, opacity: pressed ? 0.82 : 1 },
-        typeof style === 'function' ? style({ pressed, hovered }) : style,
+        typeof style === 'function' ? style({ pressed }) : style,
       ]}
     >
       <BlurView
@@ -242,7 +242,7 @@ export function LiquidGlassFAB({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed, hovered }) => [
+      style={({ pressed }) => [
         dark ? styles.shadowDark : styles.shadowLight,
         {
           width: size,

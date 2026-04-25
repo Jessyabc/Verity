@@ -60,8 +60,12 @@ export function useWatchlistDigest(userId: string | null, slugs: string[]) {
       if (row) setDigest(row)
 
       if (isDigestStale(row, currentSlugs)) {
-        // Fire background regeneration — don't await
-        void triggerDigestRegeneration(currentSlugs)
+        // Optimistically flip to generating so the UI shows progress immediately,
+        // even if the edge function takes a few seconds to write the row.
+        setDigest((prev) => prev ? { ...prev, is_generating: true } : prev)
+        triggerDigestRegeneration(currentSlugs).catch((e) => {
+          setError(formatUnknownError(e))
+        })
         startPoll(uid)
       }
     } catch (e) {
@@ -87,7 +91,22 @@ export function useWatchlistDigest(userId: string | null, slugs: string[]) {
 
         if (isDigestStale(row, slugs) && !triggeredRef.current) {
           triggeredRef.current = true
-          void triggerDigestRegeneration(slugs)
+          // Optimistically mark as generating so the card flips to
+          // "Preparing your portfolio summary…" immediately on first load.
+          setDigest((prev) => prev ? { ...prev, is_generating: true } : {
+            user_id: userId,
+            digest_text: '',
+            sources: [],
+            slugs_snapshot: slugs,
+            generated_at: new Date(0).toISOString(),
+            model: null,
+            is_generating: true,
+          })
+          triggerDigestRegeneration(slugs).catch((e) => {
+            setError(formatUnknownError(e))
+            // Roll back the optimistic generating flag so the user can retry.
+            setDigest((prev) => prev ? { ...prev, is_generating: false } : prev)
+          })
           startPoll(userId)
         } else if (row?.is_generating) {
           startPoll(userId)
@@ -125,15 +144,28 @@ export function useWatchlistDigest(userId: string | null, slugs: string[]) {
     return () => sub.remove()
   }, [userId, slugs.join('|'), checkAndRefresh]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Manual refresh: fire regeneration, optimistically mark as generating, start polling
+  // Manual refresh: optimistically flip to generating, fire regeneration, start polling.
+  // We flip the flag BEFORE awaiting the invoke so the UI updates instantly on tap;
+  // any error is rolled back below so the user can try again.
   const manualRefresh = useCallback(async () => {
     if (!userId || slugsRef.current.length === 0) return
+    setError(null)
+    setDigest((prev) => prev ? { ...prev, is_generating: true } : {
+      user_id: userId,
+      digest_text: '',
+      sources: [],
+      slugs_snapshot: slugsRef.current,
+      generated_at: new Date(0).toISOString(),
+      model: null,
+      is_generating: true,
+    })
+    startPoll(userId)
     try {
       await triggerDigestRegeneration(slugsRef.current)
-      setDigest((prev) => (prev ? { ...prev, is_generating: true } : prev))
-      startPoll(userId)
     } catch (e) {
       setError(formatUnknownError(e))
+      setDigest((prev) => prev ? { ...prev, is_generating: false } : prev)
+      stopPoll()
     }
   }, [userId, startPoll])
 
