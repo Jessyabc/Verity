@@ -106,6 +106,36 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   if (error) throw error
 }
 
+/**
+ * Persists a user message to the DB before invoking the Edge Function.
+ *
+ * This is the safety net: if the Edge Function call later fails (network drop,
+ * OpenAI timeout, server error) the user's question still survives, so the
+ * conversation isn't silently truncated on next reload. The Edge Function is
+ * told via `userMessageId` not to re-insert the same row.
+ */
+export async function insertUserMessage(
+  conversationId: string,
+  userId: string,
+  content: string,
+): Promise<ChatMessageRow> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .insert({
+      conversation_id: conversationId,
+      user_id: userId,
+      role: 'user',
+      content,
+      sources_json: null,
+      extra_context_slugs: null,
+    })
+    .select('id, conversation_id, role, content, sources_json, extra_context_slugs, created_at')
+    .single()
+
+  if (error) throw error
+  return data as ChatMessageRow
+}
+
 // ---------------------------------------------------------------------------
 // Messages
 // ---------------------------------------------------------------------------

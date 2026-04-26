@@ -34,7 +34,7 @@ import { fetchResearchCacheRow } from '@/lib/researchCache'
 import { openUrl } from '@/lib/openUrl'
 import { supabase } from '@/lib/supabase'
 import { font, radius, space } from '@/constants/theme'
-import { fetchMessages, fetchOlderMessages, type ChatMessageRow } from '@/lib/chatApi'
+import { fetchMessages, fetchOlderMessages, insertUserMessage, type ChatMessageRow } from '@/lib/chatApi'
 import { fetchWatchlistDigest } from '@/lib/watchlistDigest'
 import { speakAfaqiMessage, stopAfaqiSpeech } from '@/lib/afaqiSpeech'
 
@@ -55,6 +55,8 @@ type Message = {
   sources?: AfaqiSource[]
   /** DB row timestamp — used as the cursor for lazy loading older messages. */
   createdAt?: string
+  /** True when the Edge Function couldn't persist this turn. UI shows a warning. */
+  notSaved?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +178,14 @@ function AssistantBubble({
         <View style={[styles.assistantBubble, { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke }]}>
           <Text style={[styles.assistantText, { color: colors.ink }]}>{msg.content}</Text>
         </View>
+        {msg.notSaved ? (
+          <View style={styles.notSavedRow}>
+            <Ionicons name="cloud-offline-outline" size={12} color={colors.danger} />
+            <Text style={[styles.notSavedText, { color: colors.danger }]}>
+              Couldn{'’'}t save this reply. It may not be here next time you open the chat.
+            </Text>
+          </View>
+        ) : null}
         {showTools ? (
           <View style={styles.assistantTools}>
             <Pressable
@@ -428,19 +438,47 @@ export default function ChatScreen() {
     const text = input.trim()
     if (!text || loading || !user) return
 
-    const userMsg: Message = {
-      id: `user-${Date.now()}`,
+    // Optimistic local row so the user sees their message immediately. We swap
+    // in the persisted UUID id once the DB insert returns.
+    const optimisticId = `user-${Date.now()}`
+    const optimisticMsg: Message = {
+      id: optimisticId,
       role: 'user',
       content: text,
     }
-    setMessages((prev) => [...prev, userMsg])
+    setMessages((prev) => [...prev, optimisticMsg])
     setInput('')
     setLoading(true)
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100)
 
+    // Safety net: persist the user message BEFORE invoking the Edge Function.
+    // If the Edge Function later fails (network drop, OpenAI timeout, etc.) the
+    // question still survives and shows up on next conversation reload.
+    let persistedUserMessageId: string | null = null
+    try {
+      const persisted = await insertUserMessage(conversationId, user.id, text)
+      persistedUserMessageId = persisted.id
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === optimisticId
+            ? { ...m, id: persisted.id, createdAt: persisted.created_at }
+            : m,
+        ),
+      )
+    } catch (e) {
+      // We still try the Edge Function call below — it has its own server-side
+      // insert path. We just lose the safety net for this one turn.
+      if (__DEV__) console.warn('[afaqi-chat] client user-msg persist failed', e)
+    }
+
     try {
       const { data, error } = await supabase.functions.invoke('afaqi-chat', {
-        body: { slug, conversationId, message: text },
+        body: {
+          slug,
+          conversationId,
+          message: text,
+          userMessageId: persistedUserMessageId,
+        },
       })
 
       if (error) throw new Error(await formatInvokeError(error))
@@ -450,6 +488,7 @@ export default function ChatScreen() {
         role: 'assistant',
         content: data?.message ?? 'I had trouble processing that.',
         sources: data?.sources ?? [],
+        notSaved: data?.persistenceFailed === true,
       }
       setMessages((prev) => [...prev, assistantMsg])
 
@@ -640,6 +679,20 @@ const styles = StyleSheet.create({
     paddingVertical: space.sm + 2,
   },
   assistantText: { fontFamily: font.regular, fontSize: 15, lineHeight: 22 },
+
+  notSavedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: space.xs,
+    paddingHorizontal: 2,
+  },
+  notSavedText: {
+    flex: 1,
+    fontFamily: font.medium,
+    fontSize: 11,
+    lineHeight: 14,
+  },
 
   assistantTools: {
     flexDirection: 'row',

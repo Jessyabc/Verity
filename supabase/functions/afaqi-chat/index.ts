@@ -385,11 +385,17 @@ Deno.serve(async (req: Request) => {
   let slug: string
   let conversationId: string
   let message: string
+  // Optional: when the client has already persisted the user message itself
+  // (safety-net flow), we skip our own insert and trust history to contain it.
+  let clientUserMessageId: string | null = null
   try {
     const body = await req.json()
     slug = body.slug
     conversationId = body.conversationId
     message = typeof body.message === 'string' ? body.message.trim() : ''
+    if (typeof body.userMessageId === 'string' && body.userMessageId.trim()) {
+      clientUserMessageId = body.userMessageId.trim()
+    }
     if (!slug || typeof slug !== 'string') throw new Error('slug required')
     if (!conversationId || typeof conversationId !== 'string') throw new Error('conversationId required')
     if (!message) throw new Error('message required')
@@ -543,12 +549,21 @@ Deno.serve(async (req: Request) => {
   }
 
   // 5. Build OpenAI message list
+  // When the client has already persisted the user turn, it is the last row of
+  // `history` (sanitizeHistory keeps role/content). We must NOT append the same
+  // message again or OpenAI sees a duplicated user turn.
+  const lastHistoryTurn = history.length > 0 ? history[history.length - 1] : null
+  const userTurnAlreadyInHistory =
+    Boolean(clientUserMessageId) &&
+    lastHistoryTurn?.role === 'user' &&
+    lastHistoryTurn.content === message
+
   const openaiMessages: { role: string; content: string }[] = [
     { role: 'system', content: AFAQI_SYSTEM_PROMPT },
     { role: 'system', content: `PRIMARY RESEARCH CONTEXT:\n\n${primaryContext}` },
     ...contextBlocks.map((block) => ({ role: 'system', content: block })),
     ...history.map((m) => ({ role: m.role, content: m.content })),
-    { role: 'user', content: message },
+    ...(userTurnAlreadyInHistory ? [] : [{ role: 'user', content: message }]),
   ]
 
   // 6. Call OpenAI for synthesis
@@ -605,27 +620,53 @@ Deno.serve(async (req: Request) => {
     messageText = rawContent.slice(0, sourcesMatch.index).trim()
   }
 
-  // 7. Persist messages to DB (fire-and-forget style errors — don't fail the response)
-  try {
-    await db.from('chat_messages').insert([
-      {
-        conversation_id: conversationId,
-        user_id: user.id,
-        role: 'user',
-        content: message,
-        sources_json: null,
-        extra_context_slugs: null,
-      },
-      {
-        conversation_id: conversationId,
-        user_id: user.id,
-        role: 'assistant',
-        content: messageText,
-        sources_json: sources.length > 0 ? sources : null,
-        extra_context_slugs: extraContextSlugs.length > 0 ? extraContextSlugs : null,
-      },
-    ])
+  // 7. Persist messages to DB.
+  //
+  // The user turn is persisted by the client first (safety net). If we get a
+  // `userMessageId` we skip our own insert. The assistant turn is the one
+  // worth surfacing — if it fails the user just sees a chat reply that won't
+  // be there on reload, which is exactly the bug we are fixing. We log the
+  // error and return a `persistence_failed` flag so the UI can warn the user.
+  let persistenceFailed = false
 
+  if (!clientUserMessageId) {
+    const { error: userInsertError } = await db.from('chat_messages').insert({
+      conversation_id: conversationId,
+      user_id: user.id,
+      role: 'user',
+      content: message,
+      sources_json: null,
+      extra_context_slugs: null,
+    })
+    if (userInsertError) {
+      persistenceFailed = true
+      console.error('[afaqi-chat] user message insert failed', {
+        conversationId,
+        error: userInsertError.message,
+        code: userInsertError.code,
+      })
+    }
+  }
+
+  const { error: assistantInsertError } = await db.from('chat_messages').insert({
+    conversation_id: conversationId,
+    user_id: user.id,
+    role: 'assistant',
+    content: messageText,
+    sources_json: sources.length > 0 ? sources : null,
+    extra_context_slugs: extraContextSlugs.length > 0 ? extraContextSlugs : null,
+  })
+  if (assistantInsertError) {
+    persistenceFailed = true
+    console.error('[afaqi-chat] assistant message insert failed', {
+      conversationId,
+      error: assistantInsertError.message,
+      code: assistantInsertError.code,
+    })
+  }
+
+  // Title refresh + last_message_at — best-effort, never blocks the response.
+  try {
     const { count } = await db
       .from('chat_messages')
       .select('*', { count: 'exact', head: true })
@@ -659,8 +700,8 @@ Deno.serve(async (req: Request) => {
     }
 
     await db.from('conversations').update(updateData).eq('id', conversationId)
-  } catch {
-    // Persistence failure should not block the response
+  } catch (err) {
+    console.error('[afaqi-chat] conversation metadata update failed', err)
   }
 
   return new Response(
@@ -669,6 +710,9 @@ Deno.serve(async (req: Request) => {
       sources,
       // Surface which extra companies were loaded so the UI can update the context pill
       extraContextSlugs: extraContextSlugs.length > 0 ? extraContextSlugs : undefined,
+      // True when the assistant turn (or the server-side user-turn fallback)
+      // could not be persisted; client should warn the user.
+      persistenceFailed: persistenceFailed || undefined,
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
   )
