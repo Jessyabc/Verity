@@ -9,14 +9,16 @@
  */
 
 import { useFocusEffect, useRouter } from 'expo-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  AppState,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -447,6 +449,7 @@ export default function WatchlistScreen() {
   const [researchMap, setResearchMap] = useState<Map<string, CompanyResearchRow>>(new Map())
   const [sourceBySlug, setSourceBySlug] = useState<Map<string, string[]>>(new Map())
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSearch, setShowSearch] = useState(false)
 
@@ -458,6 +461,10 @@ export default function WatchlistScreen() {
     refresh: refreshDigest,
   } = useWatchlistDigest(user?.id ?? null, slugs)
 
+  // Tracks the last in-flight load so concurrent loads (focus + AppState
+  // resume firing back-to-back) can't race and apply stale results.
+  const loadSeqRef = useRef(0)
+
   const load = useCallback(async () => {
     if (!user) {
       setCompanies([])
@@ -465,6 +472,7 @@ export default function WatchlistScreen() {
       setLoading(false)
       return
     }
+    const seq = ++loadSeqRef.current
     setLoading(true)
     setError(null)
     try {
@@ -474,21 +482,53 @@ export default function WatchlistScreen() {
         fetchResearchCacheRowsForSlugs(slugs),
         fetchSourceBaseUrlsBySlugs(supabase, slugs),
       ])
+      // Drop result if a newer load started while we were awaiting.
+      if (seq !== loadSeqRef.current) return
+
+      // Diagnostic: surface partial joins between user_watchlist and companies
+      // so we can spot data quality issues that would otherwise be invisible.
+      if (cos.length < slugs.length) {
+        const found = new Set(cos.map((c) => c.slug))
+        const missing = slugs.filter((s) => !found.has(s))
+        console.warn('[watchlist] some slugs have no companies row', { missing })
+      }
+
       setCompanies(cos)
       setSourceBySlug(srcMap)
       const map = new Map<string, CompanyResearchRow>()
       for (const r of rows) map.set(r.slug, r)
       setResearchMap(map)
     } catch (e) {
+      if (seq !== loadSeqRef.current) return
       setError(formatUnknownError(e))
     } finally {
-      setLoading(false)
+      if (seq === loadSeqRef.current) setLoading(false)
     }
   }, [user])
 
   useFocusEffect(useCallback(() => {
     void load()
   }, [load]))
+
+  // Re-fetch when the app returns to foreground. Without this, an iOS resume
+  // can leave the watchlist showing data from before the suspend (or from a
+  // half-completed load that timed out silently).
+  useEffect(() => {
+    if (!user) return
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void load()
+    })
+    return () => sub.remove()
+  }, [user, load])
+
+  const handlePullToRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await load()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [load])
 
   useEffect(() => {
     if (!user || companies.length === 0) return
@@ -623,6 +663,14 @@ export default function WatchlistScreen() {
                   overflow: 'hidden',
                 }}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={() => void handlePullToRefresh()}
+                    tintColor={brand.tealLight}
+                    colors={[brand.tealLight]}
+                  />
+                }
                 renderItem={({ item, index }) => (
                   <CompanyCard
                     company={item}
