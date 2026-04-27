@@ -30,6 +30,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useAuth } from '@/contexts/AuthContext'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
+import { MarkdownText } from '@/components/MarkdownText'
 import { fetchResearchCacheRow } from '@/lib/researchCache'
 import { openUrl } from '@/lib/openUrl'
 import { supabase } from '@/lib/supabase'
@@ -176,7 +177,12 @@ function AssistantBubble({
       </View>
       <View style={styles.assistantContent}>
         <View style={[styles.assistantBubble, { backgroundColor: colors.surfaceSolid, borderColor: colors.stroke }]}>
-          <Text style={[styles.assistantText, { color: colors.ink }]}>{msg.content}</Text>
+          <MarkdownText
+            content={msg.content}
+            ink={colors.ink}
+            inkMuted={colors.inkMuted}
+            monoBg={colors.accentSoft}
+          />
         </View>
         {msg.notSaved ? (
           <View style={styles.notSavedRow}>
@@ -392,7 +398,7 @@ export default function ChatScreen() {
             id: 'welcome',
             role: 'assistant',
             content: digestText
-              ? `${digestText}\n\nAsk me anything about this — themes, risks, cross-company comparisons, or what to dig into next.`
+              ? `${digestText}\n\nAsk me anything about this - themes, risks, cross-company comparisons, or what to dig into next.`
               : 'Your portfolio summary is not ready yet. Pull up the watchlist and tap to generate it, then come back.',
           }])
         } else {
