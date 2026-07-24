@@ -160,19 +160,43 @@ Using only the Company Research Card (and any labeled live blocks), produce a st
 Rules: no advice, ratings, or price targets; attribute claims by layer; if a section is missing in cache, say so.`,
 
   compare: `MODE: Compare
-You are comparing companies using their research cards (and labeled live blocks only when a card is missing).
+Write a dense side-by-side research compare. Prefer scannable structure over essay prose.
 
-Produce:
-1. Scope note (what is comparable / not)
-2. Strategy & business model (official-layer contrast)
-3. Market narrative contrast (independent-layer)
-4. Financial snapshot (side-by-side bullets)
-5. Shared risks / divergent risks (from gaps + narratives)
-6. Unresolved questions
-7. Sources by company
+FORMAT — plain text only. Do NOT use markdown headings (# ## ###) or horizontal rules.
+Use this exact skeleton:
 
-Forbidden: picking a winner, allocation advice, price targets, "undervalued/overvalued," or buy/sell language.
-If fewer than two companies have usable context, say what is missing and what the user should refresh.`,
+COMPARE: {A} vs {B}
+Scope: one short line on what is / is not comparable.
+
+OFFICIAL
+Strategy — {A}: … | {B}: …
+Model — {A}: … | {B}: …
+
+INDEPENDENT
+Narrative — {A}: … | {B}: …
+Debate — one line on where coverage agrees or diverges.
+
+FINANCIALS
+Use "n/a" when missing. At most 5 rows:
+{metric} — {A value} | {B value}
+
+GAPS / RISKS
+Shared — …
+{A}-only — …
+{B}-only — …
+
+OPEN
+- 2–4 short research questions
+
+SOURCES
+{A} — title (domain); title (domain)
+{B} — title (domain); title (domain)
+
+Rules:
+- One short clause per side after each em dash. No paragraphs.
+- Keep official vs independent separated.
+- No winner language, advice, ratings, or price targets.
+- If a peer card is thin/missing, keep rows as n/a and say what to refresh.`,
 
   portfolio_synthesis: `MODE: Portfolio synthesis
 Using the portfolio digest and company research cards, produce:

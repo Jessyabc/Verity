@@ -5,7 +5,7 @@
 import { HeaderBackButton, useHeaderHeight } from '@react-navigation/elements'
 import type { NativeStackHeaderBackProps } from '@react-navigation/native-stack'
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   LayoutAnimation,
@@ -17,17 +17,19 @@ import {
   UIManager,
   View,
 } from 'react-native'
-import { ScrollView } from 'react-native-gesture-handler'
+import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BlurView } from 'expo-blur'
 import * as Haptics from 'expo-haptics'
 import { LinearGradient } from 'expo-linear-gradient'
+import { runOnJS } from 'react-native-reanimated'
 
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { LiquidGlassHeaderIconButton } from '@/components/LiquidGlass'
 import { VerityMark } from '@/components/VerityMark'
 import { useAuth } from '@/contexts/AuthContext'
 import { font, radius, space } from '@/constants/theme'
+import { resolveConversationIdForSlug } from '@/lib/chatApi'
 import { useAdaptiveBrand, type AdaptiveBrandTokens } from '@/hooks/useAdaptiveBrand'
 import { fetchCompanyBundleBySlug } from '@/lib/companyBundle'
 import type { CompanyRow } from '@/lib/companyBySlug'
@@ -453,8 +455,10 @@ export default function CompanyScreen() {
   const [researchBusy, setResearchBusy] = useState(false)
   const [onWatchlist, setOnWatchlist] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [openingChat, setOpeningChat] = useState(false)
 
   const brand = useAdaptiveBrand()
+  const openingChatRef = useRef(false)
 
   const savedUrls = savedUrlSet(savedRows)
 
@@ -590,6 +594,65 @@ export default function CompanyScreen() {
     }
   }
 
+  /** Skip the conversation list — open latest thread or create one. */
+  const openChatDirectly = useCallback(async () => {
+    if (!user || !slug || openingChatRef.current) return
+    openingChatRef.current = true
+    setOpeningChat(true)
+    try {
+      const id = await resolveConversationIdForSlug(user.id, slug)
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+      router.push(`/chat/${slug}/${id}`)
+    } catch (e) {
+      setError(formatUnknownError(e))
+    } finally {
+      openingChatRef.current = false
+      setOpeningChat(false)
+    }
+  }, [user, slug, router])
+
+  const openChatOrResearch = useCallback(() => {
+    if (researchBusy || openingChatRef.current) return
+    const ready =
+      Boolean(research?.items?.length) ||
+      Boolean(research?.company_narrative?.trim()) ||
+      Boolean(research?.media_narrative?.trim()) ||
+      (Array.isArray(research?.factual_gaps) && research!.factual_gaps!.length > 0)
+    if (ready) {
+      void openChatDirectly()
+      return
+    }
+    if (!company) return
+    void (async () => {
+      setResearchBusy(true)
+      setError(null)
+      try {
+        await invokeResearchCompany(company.slug, company.name, company.ticker)
+        setResearch(await fetchResearchCacheRow(company.slug))
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      } catch (e) {
+        setError(formatUnknownError(e))
+      } finally {
+        setResearchBusy(false)
+      }
+    })()
+  }, [research, researchBusy, openChatDirectly, company])
+
+  // Swipe left → chat (does not fight sidebar, which opens on swipe right).
+  const swipeToChatGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX([-28, 1000])
+        .failOffsetY([-18, 18])
+        .onEnd((e) => {
+          const leftEnough = e.translationX < -72 || e.velocityX < -650
+          if (leftEnough) {
+            runOnJS(openChatOrResearch)()
+          }
+        }),
+    [openChatOrResearch],
+  )
+
   const handleSaveToggle = async (
     item: ResearchNewsItem,
     savedId?: string,
@@ -674,6 +737,7 @@ export default function CompanyScreen() {
   const headerLine = company.ticker ? `${company.name} · ${company.ticker}` : company.name
 
   return (
+    <GestureDetector gesture={swipeToChatGesture}>
     <View style={[styles.container, { backgroundColor: brand.navy }]}>
       <ScrollView
         style={styles.scroll}
@@ -808,19 +872,26 @@ export default function CompanyScreen() {
             styles.discussBtn,
             {
               backgroundColor: brand.tealDark,
-              opacity: researchBusy ? 0.75 : pressed ? 0.94 : 1,
+              opacity: researchBusy || openingChat ? 0.75 : pressed ? 0.94 : 1,
             },
           ]}
-          onPress={() => {
-            if (hasResearch) router.push(`/chat/${slug}`)
-            else void runResearch()
-          }}
-          disabled={researchBusy}
+          onPress={() => openChatOrResearch()}
+          disabled={researchBusy || openingChat || !user}
         >
-          <Text style={styles.discussBtnText}>
-            {hasResearch ? 'Continue in chat with Verity' : 'Run research to open chat'}
-          </Text>
+          {openingChat ? (
+            <ActivityIndicator color="#ffffff" size="small" />
+          ) : (
+            <Text style={styles.discussBtnText}>
+              {hasResearch ? 'Continue in chat with Verity' : 'Run research to open chat'}
+            </Text>
+          )}
         </Pressable>
+
+        {hasResearch ? (
+          <Text style={[styles.swipeHint, { color: brand.onNavySubtle }]}>
+            Swipe left anytime to open chat
+          </Text>
+        ) : null}
 
         <Text style={[styles.disclaimer, { color: brand.onNavySubtle }]}>
           Not investment advice · Compare official and independent narratives above · AI may be incomplete · verify with
@@ -828,7 +899,15 @@ export default function CompanyScreen() {
         </Text>
       </ScrollView>
 
+      {/* Right-edge affordance for swipe-to-chat */}
+      {hasResearch ? (
+        <View pointerEvents="none" style={styles.swipeEdge}>
+          <Text style={[styles.swipeEdgeChevron, { color: brand.tealLight }]}>‹</Text>
+        </View>
+      ) : null}
+
     </View>
+    </GestureDetector>
   )
 }
 
@@ -974,6 +1053,30 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     textAlign: 'center',
     paddingHorizontal: space.md,
+  },
+  swipeHint: {
+    fontFamily: font.regular,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: -space.xs,
+  },
+  swipeEdge: {
+    position: 'absolute',
+    right: 0,
+    top: '42%',
+    width: 18,
+    height: 56,
+    borderTopLeftRadius: 10,
+    borderBottomLeftRadius: 10,
+    backgroundColor: 'rgba(47, 180, 176, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swipeEdgeChevron: {
+    fontFamily: font.semi,
+    fontSize: 22,
+    lineHeight: 24,
+    marginLeft: 2,
   },
   disclaimer: {
     fontFamily: font.regular,

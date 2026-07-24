@@ -100,6 +100,21 @@ export async function createConversation(
   return data as Conversation
 }
 
+/**
+ * Opens the latest titled thread for a slug, or creates a fresh conversation.
+ * Used by company-profile swipe / "Continue in chat" to skip the list screen.
+ */
+export async function resolveConversationIdForSlug(
+  userId: string,
+  slug: string,
+): Promise<string> {
+  const list = await fetchConversations(slug)
+  const latest = list.find((c) => typeof c.title === 'string' && c.title.trim().length > 0)
+  if (latest) return latest.id
+  const created = await createConversation(userId, slug)
+  return created.id
+}
+
 /** Deletes a conversation and all messages (DB cascade). */
 export async function deleteConversation(conversationId: string): Promise<void> {
   const { error } = await supabase.from('conversations').delete().eq('id', conversationId)
