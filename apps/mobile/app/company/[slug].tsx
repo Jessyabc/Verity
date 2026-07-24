@@ -32,6 +32,11 @@ import { useAdaptiveBrand, type AdaptiveBrandTokens } from '@/hooks/useAdaptiveB
 import { fetchCompanyBundleBySlug } from '@/lib/companyBundle'
 import type { CompanyRow } from '@/lib/companyBySlug'
 import { formatAgo, formatResearchUpdated, formatUnknownError } from '@/lib/format'
+import {
+  confidenceLabel,
+  getResearchConfidence,
+  getResearchFreshness,
+} from '@/lib/researchFreshness'
 import { itemIsCompanySource, itemIsMediaSource } from '@/lib/headlineGrouping'
 import {
   deleteWatchlistSlug,
@@ -656,6 +661,16 @@ export default function CompanyScreen() {
     Boolean(research?.media_narrative?.trim()) ||
     factualGaps.length > 0
 
+  const freshness = getResearchFreshness(research?.fetched_at)
+  const confidence = getResearchConfidence({
+    fetchedAt: research?.fetched_at,
+    hasNarratives:
+      Boolean(research?.company_narrative?.trim()) ||
+      Boolean(research?.media_narrative?.trim()),
+    hasFinancials: Boolean(research?.financial_highlights?.metrics?.length),
+    hasGaps: factualGaps.length > 0,
+  })
+
   const headerLine = company.ticker ? `${company.name} · ${company.ticker}` : company.name
 
   return (
@@ -690,6 +705,7 @@ export default function CompanyScreen() {
         <View style={styles.refreshRow}>
           <Text style={[styles.updatedLine, { color: brand.onNavyMuted }]}>
             {formatResearchUpdated(research?.fetched_at)}
+            {hasResearch ? ` · ${confidenceLabel(confidence)}` : ''}
           </Text>
           <Pressable
             style={({ pressed }) => [
@@ -705,10 +721,23 @@ export default function CompanyScreen() {
             {researchBusy ? (
               <ActivityIndicator color="#ffffff" size="small" />
             ) : (
-              <Text style={styles.refreshBtnLabel}>Refresh</Text>
+              <Text style={styles.refreshBtnLabel}>
+                {freshness.needsRefresh && hasResearch ? 'Refresh now' : 'Refresh'}
+              </Text>
             )}
           </Pressable>
         </View>
+
+        {freshness.needsRefresh && hasResearch && freshness.refreshHint ? (
+          <View style={[styles.staleBanner, { borderColor: 'rgba(245, 158, 11, 0.45)' }]}>
+            <Text style={[styles.staleBannerTitle, { color: brand.onNavy }]}>
+              {freshness.level === 'very_stale' ? 'Research is very stale' : 'Research may be outdated'}
+            </Text>
+            <Text style={[styles.staleBannerBody, { color: brand.onNavyMuted }]}>
+              {freshness.refreshHint}
+            </Text>
+          </View>
+        ) : null}
 
         {marketData ? (
           <View style={styles.marketSection}>
@@ -827,6 +856,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   refreshBtnLabel: { fontFamily: font.semi, fontSize: 15, color: '#ffffff' },
+
+  staleBanner: {
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm + 2,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+  },
+  staleBannerTitle: { fontFamily: font.semi, fontSize: 14, marginBottom: 2 },
+  staleBannerBody: { fontFamily: font.regular, fontSize: 13, lineHeight: 18 },
 
   marketSection: { marginTop: space.sm },
   researchDivider: { height: StyleSheet.hairlineWidth, marginTop: space.lg },

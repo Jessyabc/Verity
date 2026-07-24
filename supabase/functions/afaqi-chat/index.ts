@@ -40,6 +40,8 @@ NON-NEGOTIABLE RULES
 - If sources conflict, explain the conflict rather than forcing certainty.
 - Show source references, titles, or source labels whenever possible.
 - Never give investment advice, buy/sell recommendations, ratings, or price targets. Reframe advice-seeking into research questions and what to verify.
+- Respect FRESHNESS and CONFIDENCE lines on research cards. If a card is STALE or VERY STALE, say so briefly when the answer depends on it, and suggest Refresh on the company profile for current events.
+- If a LIVE RESEARCH UNAVAILABLE block is present, tell the user clearly — do not invent a live web answer.
 
 WHEN ADDITIONAL CONTEXT IS PROVIDED
 - You may draw on injected cross-company research or live web research when it has been provided to you in the context blocks below.
@@ -63,6 +65,7 @@ WHAT YOU ARE NOT FOR
 RESPONSE STYLE
 - Start with the direct answer.
 - Give a short explanation organized by evidence layer when relevant (Official / Independent / Financials / Gaps).
+- For analyze / compare / portfolio synthesis, end with a one-line confidence note based on card freshness and coverage (high / medium / low) — about evidence quality, not price outlook.
 - Cite or list supporting sources.
 - Keep responses concise and useful.
 - Be calm, precise, and analyst-like. Friendly but credible.
@@ -277,9 +280,7 @@ function buildResearchContext(row: CacheRow, opts?: { compact?: boolean }): stri
   const metricCap = compact ? 4 : 8
   const lines: string[] = [
     `COMPANY RESEARCH CARD: ${row.company_name}${ticker}`,
-    `Research last updated: ${new Date(row.fetched_at).toLocaleDateString('en-US', {
-      year: 'numeric', month: 'long', day: 'numeric',
-    })}`,
+    ...freshnessBlock(row),
     '',
   ]
 
@@ -366,10 +367,73 @@ function buildPortfolioContext(digestText: string, rows: CacheRow[]): string {
   return lines.join('\n')
 }
 
-/** Returns true when a cache row is fresh enough to use directly (< 48 h old). */
+/** Fresh < 48h; stale until 7d; very stale after that. Keep aligned with mobile `researchFreshness.ts`. */
+const FRESH_MS = 48 * 60 * 60 * 1000
+const VERY_STALE_MS = 7 * 24 * 60 * 60 * 1000
+
+function researchAgeMs(fetchedAt: string): number | null {
+  const t = new Date(fetchedAt).getTime()
+  if (Number.isNaN(t)) return null
+  return Math.max(0, Date.now() - t)
+}
+
+function formatAgeShort(ageMs: number): string {
+  const m = Math.floor(ageMs / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 48) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
+
+function freshnessBlock(row: CacheRow): string[] {
+  const ageMs = researchAgeMs(row.fetched_at)
+  const updated = new Date(row.fetched_at).toLocaleString('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  })
+
+  const hasNarr =
+    Boolean(row.company_narrative?.trim()) || Boolean(row.media_narrative?.trim())
+  const hasFin = Boolean(
+    row.financial_highlights &&
+      Array.isArray(row.financial_highlights.metrics) &&
+      row.financial_highlights.metrics.length > 0,
+  )
+  const hasGaps = Array.isArray(row.factual_gaps) && row.factual_gaps.length > 0
+  const depth = (hasNarr ? 1 : 0) + (hasFin ? 1 : 0) + (hasGaps ? 1 : 0)
+
+  if (ageMs == null) {
+    return [
+      `Research last updated: unknown`,
+      `Freshness: MISSING`,
+      `Confidence: low (no usable timestamp)`,
+    ]
+  }
+
+  let level = 'FRESH'
+  let confidence = depth >= 2 ? 'high' : 'medium'
+  if (ageMs >= VERY_STALE_MS) {
+    level = 'VERY STALE'
+    confidence = 'low'
+  } else if (ageMs >= FRESH_MS) {
+    level = 'STALE'
+    confidence = depth >= 2 ? 'medium' : 'low'
+  }
+
+  return [
+    `Research last updated: ${updated} (${formatAgeShort(ageMs)})`,
+    `Freshness: ${level}`,
+    `Confidence: ${confidence} (evidence coverage — not a price outlook)`,
+    level === 'FRESH'
+      ? ''
+      : 'Note: If the user asks about current events, mention staleness and suggest Refresh on the company profile.',
+  ].filter(Boolean)
+}
+
+/** Returns true when a cache row is fresh enough to prefer over live fill (< 48 h old). */
 function isCacheFresh(fetchedAt: string): boolean {
-  const age = Date.now() - new Date(fetchedAt).getTime()
-  return age < 48 * 60 * 60 * 1000
+  const age = researchAgeMs(fetchedAt)
+  return age != null && age < FRESH_MS
 }
 
 /**
@@ -848,6 +912,10 @@ Deno.serve(async (req: Request) => {
         `--- LIVE RESEARCH: "${route.query}" ---\n${result.content}`,
       )
       extraSources.push(...result.sources)
+    } else {
+      contextBlocks.push(
+        `--- LIVE RESEARCH UNAVAILABLE ---\nA live web lookup was attempted for "${route.query}" but returned no usable results. Answer only from research cards. Tell the user the live lookup did not return useful material.`,
+      )
     }
   } else if (
     route.needs_live_research &&
@@ -862,7 +930,15 @@ Deno.serve(async (req: Request) => {
         `--- LIVE RESEARCH: "${fallbackQuery}" ---\n${result.content}`,
       )
       extraSources.push(...result.sources)
+    } else {
+      contextBlocks.push(
+        `--- LIVE RESEARCH UNAVAILABLE ---\nA live web lookup was attempted but returned no usable results. Answer only from research cards and say so clearly.`,
+      )
     }
+  } else if (route.needs_live_research && !perplexityKey) {
+    contextBlocks.push(
+      `--- LIVE RESEARCH UNAVAILABLE ---\nThis question needed a live web lookup, but live research is not configured on the server. Answer only from research cards. Tell the user clearly that live research is unavailable right now.`,
+    )
   }
 
   // 5. Build OpenAI message list with mode instruction

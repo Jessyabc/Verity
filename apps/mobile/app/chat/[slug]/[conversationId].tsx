@@ -31,6 +31,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '@/contexts/AuthContext'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { fetchResearchCacheRow } from '@/lib/researchCache'
+import {
+  confidenceLabel,
+  getResearchConfidence,
+  getResearchFreshness,
+} from '@/lib/researchFreshness'
 import { openUrl } from '@/lib/openUrl'
 import { supabase } from '@/lib/supabase'
 import { font, radius, space } from '@/constants/theme'
@@ -123,6 +128,17 @@ const PORTFOLIO_STARTER_CHIPS: StarterChip[] = [
       'Which holding on my watchlist most deserves a deeper research follow-up right now, and what should I ask next?',
   },
 ]
+
+/** Align with watchlist digest auto-regen window (6h). */
+const DIGEST_FRESH_MS = 6 * 60 * 60 * 1000
+const DIGEST_VERY_STALE_MS = 48 * 60 * 60 * 1000
+
+function portfolioDigestFreshness(generatedAt: string | null | undefined) {
+  return getResearchFreshness(generatedAt, {
+    freshMs: DIGEST_FRESH_MS,
+    veryStaleMs: DIGEST_VERY_STALE_MS,
+  })
+}
 
 function rowToMessage(row: ChatMessageRow): Message {
   return {
@@ -333,6 +349,9 @@ export default function ChatScreen() {
   const [companyName, setCompanyName] = useState<string>(isPortfolio ? 'Your Watchlist' : slug)
   /** Extra company names loaded into context during this session (for context pill). */
   const [extraCompanyNames, setExtraCompanyNames] = useState<string[]>([])
+  /** Company research `fetched_at` for freshness pill (null in portfolio until digest age is set). */
+  const [researchFetchedAt, setResearchFetchedAt] = useState<string | null>(null)
+  const [digestGeneratedAt, setDigestGeneratedAt] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -406,52 +425,67 @@ export default function ChatScreen() {
     if (!slug || !conversationId) return
 
     void (async () => {
-      if (!isPortfolio) {
-        try {
-          // Load company name from research cache
-          const r = await fetchResearchCacheRow(slug)
-          if (r?.company_name) setCompanyName(r.company_name)
-        } catch { /* non-critical */ }
-      }
-
       try {
         const rows = await fetchMessages(conversationId)
         if (rows.length > 0) {
           setMessages(rows.map(rowToMessage))
-          // If we got a full page back, there might be older messages
           setHasOlderMessages(rows.length >= 20)
-        } else if (isPortfolio) {
-          // Portfolio mode: open with the full watchlist digest so the user sees
-          // the summary they tapped on, then can ask follow-ups.
+        }
+
+        if (isPortfolio) {
           let digestText = ''
+          let generatedAt: string | null = null
           if (user?.id) {
             try {
               const digest = await fetchWatchlistDigest(user.id)
               digestText = (digest?.digest_text ?? '').trim()
+              generatedAt = digest?.generated_at ?? null
+              if (generatedAt) setDigestGeneratedAt(generatedAt)
             } catch { /* non-critical */ }
           }
-          setMessages([{
-            id: 'welcome',
-            role: 'assistant',
-            content: digestText
+
+          if (rows.length === 0) {
+            const freshness = portfolioDigestFreshness(generatedAt)
+            let welcome = digestText
               ? `${digestText}\n\nAsk me anything — or tap a starter below for themes, risks, comparisons, or what to dig into next.`
-              : 'Your portfolio summary is not ready yet. Pull up the watchlist and tap to generate it, then come back.',
-          }])
+              : 'Your portfolio summary is not ready yet. Pull up the watchlist and tap to generate it, then come back.'
+            if (digestText && freshness.needsRefresh) {
+              welcome += `\n\nPortfolio brief: ${freshness.pillLabel.toLowerCase()}. Consider regenerating from the watchlist if you need a fresher synthesis.`
+            }
+            setMessages([{ id: 'welcome', role: 'assistant', content: welcome }])
+          }
         } else {
-          // Fresh company conversation — seed a contextual welcome
           const cache = await fetchResearchCacheRow(slug)
           const itemCount = cache?.items?.length ?? 0
           const compName = cache?.company_name ?? slug
-          const hasNarratives = Boolean(
-            cache?.company_narrative?.trim() || cache?.media_narrative?.trim(),
-          )
-          setMessages([{
-            id: 'welcome',
-            role: 'assistant',
-            content: itemCount > 0 || hasNarratives
-              ? `I have the full research card loaded for ${compName} — narratives, financials, gaps, and sources. Tap a starter below or ask anything.`
-              : `No research has been run for ${slug} yet. Go back to the company profile and hit "Refresh" first, then return here.`,
-          }])
+          if (cache?.company_name) setCompanyName(cache.company_name)
+          if (cache?.fetched_at) setResearchFetchedAt(cache.fetched_at)
+
+          if (rows.length === 0) {
+            const hasNarratives = Boolean(
+              cache?.company_narrative?.trim() || cache?.media_narrative?.trim(),
+            )
+            const freshness = getResearchFreshness(cache?.fetched_at)
+            const confidence = getResearchConfidence({
+              fetchedAt: cache?.fetched_at,
+              hasNarratives,
+              hasFinancials: Boolean(cache?.financial_highlights?.metrics?.length),
+              hasGaps: Boolean(cache?.factual_gaps?.length),
+            })
+
+            let welcome: string
+            if (itemCount > 0 || hasNarratives) {
+              welcome =
+                `I have the full research card loaded for ${compName} — narratives, financials, gaps, and sources ` +
+                `(${freshness.pillLabel.toLowerCase()}, ${confidenceLabel(confidence).toLowerCase()}).`
+              if (freshness.refreshHint) welcome += `\n\n${freshness.refreshHint}`
+              welcome += '\n\nTap a starter below or ask anything.'
+            } else {
+              welcome =
+                `No research has been run for ${slug} yet. Go back to the company profile and hit "Refresh" first, then return here.`
+            }
+            setMessages([{ id: 'welcome', role: 'assistant', content: welcome }])
+          }
         }
       } catch { /* non-critical */ }
 
@@ -542,10 +576,16 @@ export default function ChatScreen() {
   const starterChips = isPortfolio ? PORTFOLIO_STARTER_CHIPS : COMPANY_STARTER_CHIPS
   const showStarterChips = historyReady && !loading && !hasUserMessage
 
+  const freshness = isPortfolio
+    ? portfolioDigestFreshness(digestGeneratedAt)
+    : getResearchFreshness(researchFetchedAt)
+
   // Context pill label
   const contextLabel = extraCompanyNames.length > 0
-    ? `${companyName} + ${extraCompanyNames.join(', ')}`
-    : isPortfolio ? 'Portfolio context' : `${companyName} research`
+    ? `${companyName} + ${extraCompanyNames.join(', ')} · ${freshness.pillLabel}`
+    : isPortfolio
+      ? `Portfolio · ${freshness.pillLabel}`
+      : `${companyName} · ${freshness.pillLabel}`
 
   return (
     <KeyboardAvoidingView
@@ -554,8 +594,23 @@ export default function ChatScreen() {
       keyboardVerticalOffset={insets.top + 44}
     >
       {/* Context pill */}
-      <View style={[styles.contextPill, { backgroundColor: colors.accentSoft }]}>
-        <Text style={[styles.contextText, { color: colors.accent }]} numberOfLines={1}>
+      <View
+        style={[
+          styles.contextPill,
+          {
+            backgroundColor: freshness.needsRefresh
+              ? 'rgba(180, 83, 9, 0.12)'
+              : colors.accentSoft,
+          },
+        ]}
+      >
+        <Text
+          style={[
+            styles.contextText,
+            { color: freshness.needsRefresh ? '#b45309' : colors.accent },
+          ]}
+          numberOfLines={1}
+        >
           Context: {contextLabel}
         </Text>
       </View>
