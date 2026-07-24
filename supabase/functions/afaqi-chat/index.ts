@@ -11,10 +11,10 @@
  *  1. Validate session + env
  *  2. Load primary company research from cache
  *  3. Load last 20 conversation turns from chat_messages
- *  4. Classify intent of the new message (context_only | cross_company | research_needed)
- *  5. Fetch cross-company context or live Perplexity research as needed
- *  6. Call OpenAI for synthesis
- *  7. Persist user + assistant messages to chat_messages; refresh conversation title via LLM at 2 and 20 messages
+ *  4. Route mode (analyze | compare | portfolio_synthesis | theme | technical | context_qa)
+ *  5. Fetch compare-company cards and/or live Perplexity research as needed
+ *  6. Call OpenAI for synthesis with a mode-specific instruction block
+ *  7. Persist user + assistant messages; refresh conversation title at 2 and 20 messages
  *  8. Return { message, sources }
  */
 
@@ -117,10 +117,19 @@ type AfaqiSource = {
   source?: string
 }
 
-type Intent = {
-  type: 'context_only' | 'cross_company' | 'research_needed'
+type ResearchMode =
+  | 'analyze'
+  | 'compare'
+  | 'portfolio_synthesis'
+  | 'theme'
+  | 'technical'
+  | 'context_qa'
+
+type ModeRoute = {
+  mode: ResearchMode
   companies: string[]
   query: string
+  needs_live_research: boolean
 }
 
 type PerplexityResult = {
@@ -132,6 +141,72 @@ const CACHE_SELECT =
   'slug, company_name, ticker, items, fetched_at, company_narrative, media_narrative, factual_gaps, financial_highlights'
 
 const PORTFOLIO_SLUG = '__portfolio__'
+
+const MODE_INSTRUCTIONS: Record<ResearchMode, string> = {
+  analyze: `MODE: Analyze ticker
+Using only the Company Research Card (and any labeled live blocks), produce a structured memo with these headings:
+
+1. Takeaway
+2. Official narrative
+3. Independent narrative
+4. Financial snapshot
+5. Factual gaps / unresolved
+6. What to verify next (research watchpoints — not trade ideas)
+7. Sources (official first, then independent)
+
+Rules: no advice, ratings, or price targets; attribute claims by layer; if a section is missing in cache, say so.`,
+
+  compare: `MODE: Compare
+You are comparing companies using their research cards (and labeled live blocks only when a card is missing).
+
+Produce:
+1. Scope note (what is comparable / not)
+2. Strategy & business model (official-layer contrast)
+3. Market narrative contrast (independent-layer)
+4. Financial snapshot (side-by-side bullets)
+5. Shared risks / divergent risks (from gaps + narratives)
+6. Unresolved questions
+7. Sources by company
+
+Forbidden: picking a winner, allocation advice, price targets, "undervalued/overvalued," or buy/sell language.
+If fewer than two companies have usable context, say what is missing and what the user should refresh.`,
+
+  portfolio_synthesis: `MODE: Portfolio synthesis
+Using the portfolio digest and company research cards, produce:
+
+1. Cross-portfolio themes (name companies)
+2. Narrative divergences worth attention (official vs independent)
+3. Shared gap patterns
+4. Concentration / theme overlap observations (descriptive only — not advisory)
+5. Best next research questions (3–5)
+6. Sources
+
+No investment advice or portfolio allocation recommendations.`,
+
+  theme: `MODE: Theme / sector research
+1) Summarize the theme from live research and any card evidence (mechanics, current status, key actors).
+2) Map relevance to provided holdings/cards — only where evidence supports a link.
+3) Separate confirmed links vs uncertain links.
+4) Open research questions.
+5) Sources — prefer papers, standards bodies, filings, primary policy, reputable technical/trade press.
+
+No investment advice.`,
+
+  technical: `MODE: Technical / market-structure explanation
+1) Explain the concept clearly for a serious investor.
+2) If a company card is present, connect to disclosed uses/risks only when supported.
+3) Prefer technical primary sources when present in live research.
+4) Call out contested claims.
+5) Sources.
+
+No investment advice.`,
+
+  context_qa: `MODE: Context Q&A
+Answer directly from the provided research context.
+Keep official vs independent layers distinct when both are relevant.
+If evidence is thin, say so and suggest a sharper follow-up.
+No investment advice.`,
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -361,13 +436,74 @@ async function generateConversationTitle(
   }
 }
 
-/** Classify the user message to determine what extra context is needed. */
-async function classifyIntent(
+/** Fast path for obvious starter-chip / keyword shapes before calling the classifier. */
+function heuristicMode(
+  message: string,
+  isPortfolio: boolean,
+): Partial<ModeRoute> | null {
+  const m = message.toLowerCase()
+  if (/\bcompare\b/.test(m) || /\bvs\.?\b/.test(m) || /\bversus\b/.test(m)) {
+    // Same-company narrative contrast is analyze/context, not peer compare
+    if (
+      /\bofficial\b/.test(m) &&
+      (/\bindependent\b/.test(m) || /\bmedia\b/.test(m) || /\banalyst\b/.test(m))
+    ) {
+      return { mode: isPortfolio ? 'portfolio_synthesis' : 'analyze', needs_live_research: false }
+    }
+    return { mode: 'compare', needs_live_research: false }
+  }
+  if (
+    /\banalyze\b/.test(m) ||
+    /\bresearch memo\b/.test(m) ||
+    /\bstructured research memo\b/.test(m) ||
+    /\bdeep dive\b/.test(m)
+  ) {
+    return { mode: isPortfolio ? 'portfolio_synthesis' : 'analyze', needs_live_research: false }
+  }
+  if (
+    isPortfolio &&
+    (/\bthemes?\b/.test(m) ||
+      /\bcross-portfolio\b/.test(m) ||
+      (/\bwatchlist\b/.test(m) && /\bsynthesis\b/.test(m)) ||
+      /\bshared risks?\b/.test(m) ||
+      /\bgaps stand out\b/.test(m))
+  ) {
+    return { mode: 'portfolio_synthesis', needs_live_research: false }
+  }
+  if (/\bhow does\b/.test(m) || /\bwhat is\b/.test(m) && /\bwork\b/.test(m)) {
+    return { mode: 'technical', needs_live_research: true }
+  }
+  if (/\bsector\b/.test(m) || /\btheme\b/.test(m) || /\bindustry\b/.test(m)) {
+    return { mode: 'theme', needs_live_research: true }
+  }
+  return null
+}
+
+const VALID_MODES = new Set<ResearchMode>([
+  'analyze',
+  'compare',
+  'portfolio_synthesis',
+  'theme',
+  'technical',
+  'context_qa',
+])
+
+/** Route the user message to a research mode and any extra lookups needed. */
+async function classifyMode(
   message: string,
   primaryCompanyName: string,
+  isPortfolio: boolean,
   openaiKey: string,
-): Promise<Intent> {
-  const fallback: Intent = { type: 'context_only', companies: [], query: '' }
+): Promise<ModeRoute> {
+  const fallback: ModeRoute = {
+    mode: isPortfolio ? 'portfolio_synthesis' : 'context_qa',
+    companies: [],
+    query: '',
+    needs_live_research: false,
+  }
+
+  const hint = heuristicMode(message, isPortfolio)
+
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -380,40 +516,83 @@ async function classifyIntent(
         messages: [
           {
             role: 'system',
-            content: `Classify the user message for a financial research assistant. Respond with JSON only.
-Primary company in context: "${primaryCompanyName}"
+            content: `Classify the user message for Verity's research assistant. Respond with JSON only.
+Primary context: "${primaryCompanyName}"
+Is portfolio chat: ${isPortfolio}
 
-Intent types:
-- "context_only": the question is answerable from the primary company's existing research (no external lookup needed)
-- "cross_company": the user mentions a DIFFERENT specific company, stock, or organisation by name or ticker that is NOT the primary company
-- "research_needed": the user asks about a general topic, technology, concept, scientific area, or market theme that requires a web search to answer well (e.g. "what is NVLink?", "latest quantum computing research", "how does trapped-ion work?")
+Modes:
+- "analyze": structured deep dive on the primary company using its research card
+- "compare": side-by-side compare of two or more companies (fill companies[])
+- "portfolio_synthesis": themes/risks/gaps across the watchlist (portfolio chat or multi-holding questions)
+- "theme": sector/theme research that may need live search; map back to holdings when possible
+- "technical": how a technology/process/market structure works; usually needs live search
+- "context_qa": follow-up answerable from existing research cards (default)
 
-Note: if a question is both cross_company AND research_needed (e.g. "how does Nvidia's NVLink compare?"), prefer "cross_company".
+Rules:
+- Prefer "compare" when the user contrasts companies or asks for a peer compare.
+- Prefer "analyze" for "analyze", "memo", "deep dive" on one company.
+- Prefer "portfolio_synthesis" in portfolio chat for themes/risks/gaps across holdings.
+- If theme/technical needs web search, set needs_live_research true and provide query.
+- For compare, put peer company names/tickers in companies (exclude the primary if already in context). Max 2.
+- If both compare and technical apply (e.g. "compare NVLink at Nvidia vs AMD"), prefer "compare".
 
 Output JSON only:
 {
-  "type": "context_only" | "cross_company" | "research_needed",
+  "mode": "analyze" | "compare" | "portfolio_synthesis" | "theme" | "technical" | "context_qa",
   "companies": ["CompanyName or TICKER"],
-  "query": "concise web search query string (empty string if context_only)"
+  "query": "concise web search query (empty if not needed)",
+  "needs_live_research": boolean
 }`,
           },
           { role: 'user', content: message },
         ],
         temperature: 0,
-        max_tokens: 120,
+        max_tokens: 160,
         response_format: { type: 'json_object' },
       }),
     })
-    if (!res.ok) return fallback
+    if (!res.ok) {
+      return hint
+        ? {
+            mode: hint.mode ?? fallback.mode,
+            companies: [],
+            query: '',
+            needs_live_research: hint.needs_live_research ?? false,
+          }
+        : fallback
+    }
     const json = await res.json()
     const parsed = JSON.parse(json.choices?.[0]?.message?.content ?? '{}')
+    const modeRaw = typeof parsed.mode === 'string' ? parsed.mode : ''
+    let mode: ResearchMode = VALID_MODES.has(modeRaw as ResearchMode)
+      ? (modeRaw as ResearchMode)
+      : fallback.mode
+
+    // Heuristic wins on clear chip/keyword shapes when classifier disagrees mildly
+    if (hint?.mode && (mode === 'context_qa' || mode === hint.mode)) {
+      mode = hint.mode
+    }
+
+    if (isPortfolio && mode === 'analyze') mode = 'portfolio_synthesis'
+
     return {
-      type: parsed.type ?? 'context_only',
-      companies: Array.isArray(parsed.companies) ? parsed.companies.slice(0, 3) : [],
+      mode,
+      companies: Array.isArray(parsed.companies) ? parsed.companies.slice(0, 2) : [],
       query: typeof parsed.query === 'string' ? parsed.query : '',
+      needs_live_research: Boolean(parsed.needs_live_research) ||
+        mode === 'theme' ||
+        mode === 'technical' ||
+        Boolean(hint?.needs_live_research),
     }
   } catch {
-    return fallback
+    return hint
+      ? {
+          mode: hint.mode ?? fallback.mode,
+          companies: [],
+          query: '',
+          needs_live_research: hint.needs_live_research ?? false,
+        }
+      : fallback
   }
 }
 
@@ -580,18 +759,21 @@ Deno.serve(async (req: Request) => {
 
   const history = sanitizeHistory([...(historyRows ?? [])].reverse())
 
-  // 3. Classify intent (run in parallel with nothing yet, kept sequential for clarity)
-  const intent = await classifyIntent(message, primaryCompanyName, openaiKey)
+  // 3. Route mode
+  const isPortfolio = slug === PORTFOLIO_SLUG
+  const route = await classifyMode(message, primaryCompanyName, isPortfolio, openaiKey)
 
-  // 4. Gather additional context blocks
+  // 4. Gather additional context blocks (compare peers and/or live research)
   const contextBlocks: string[] = []
   const extraSources: AfaqiSource[] = []
   const extraContextSlugs: string[] = []
 
-  if (intent.type === 'cross_company' && intent.companies.length > 0) {
-    // Process up to 2 cross-company lookups
-    for (const companyRef of intent.companies.slice(0, 2)) {
-      // Look up in Verity's companies table (name or ticker match)
+  const shouldLoadPeers =
+    route.mode === 'compare' ||
+    (route.companies.length > 0 && route.mode !== 'portfolio_synthesis')
+
+  if (shouldLoadPeers && route.companies.length > 0) {
+    for (const companyRef of route.companies.slice(0, 2)) {
       const { data: foundCompany } = await db
         .from('companies')
         .select('slug, name, ticker')
@@ -600,60 +782,99 @@ Deno.serve(async (req: Request) => {
         .maybeSingle()
 
       if (foundCompany) {
-        // Try cache first
+        if (foundCompany.slug === slug) continue
+
         const { data: otherCache } = await db
           .from('company_research_cache')
           .select(CACHE_SELECT)
           .eq('slug', foundCompany.slug)
           .maybeSingle()
 
-        if (otherCache && isCacheFresh((otherCache as CacheRow).fetched_at)) {
+        if (otherCache) {
+          // Prefer cache even if slightly stale for structured compare; label freshness in block.
+          const fresh = isCacheFresh((otherCache as CacheRow).fetched_at)
           const otherCtx = buildResearchContext(otherCache as CacheRow)
           contextBlocks.push(
-            `--- CROSS-COMPANY CONTEXT: ${(otherCache as CacheRow).company_name}${(otherCache as CacheRow).ticker ? ` (${(otherCache as CacheRow).ticker})` : ''} (from Verity research cache) ---\n${otherCtx}`,
+            `--- COMPARE / PEER CARD: ${(otherCache as CacheRow).company_name}${(otherCache as CacheRow).ticker ? ` (${(otherCache as CacheRow).ticker})` : ''} (${fresh ? 'Verity research cache' : 'Verity research cache — may be stale'}) ---\n${otherCtx}`,
           )
           extraContextSlugs.push(foundCompany.slug)
         } else if (perplexityKey) {
-          // Cache stale or missing — do a targeted Perplexity fetch
           const result = await searchPerplexity(
-            `${foundCompany.name}${foundCompany.ticker ? ` ${foundCompany.ticker}` : ''} company overview latest news`,
+            `${foundCompany.name}${foundCompany.ticker ? ` ${foundCompany.ticker}` : ''} company overview latest news filings`,
             perplexityKey,
           )
           if (result.content) {
             contextBlocks.push(
-              `--- CROSS-COMPANY CONTEXT: ${foundCompany.name} (live search — research cache is stale or unavailable) ---\n${result.content}`,
+              `--- COMPARE / PEER CONTEXT: ${foundCompany.name} (live search — not in Verity research cache) ---\n${result.content}`,
             )
             extraSources.push(...result.sources)
             extraContextSlugs.push(foundCompany.slug)
           }
         }
       } else if (perplexityKey) {
-        // Company not in Verity's database at all
         const result = await searchPerplexity(
-          `${companyRef} company overview recent news`,
+          `${companyRef} company overview recent news filings`,
           perplexityKey,
         )
         if (result.content) {
           contextBlocks.push(
-            `--- CROSS-COMPANY CONTEXT: ${companyRef} (not currently tracked in Verity — live search results) ---\n${result.content}`,
+            `--- COMPARE / PEER CONTEXT: ${companyRef} (not currently tracked in Verity — live search) ---\n${result.content}`,
           )
           extraSources.push(...result.sources)
         }
       }
     }
-  } else if (intent.type === 'research_needed' && intent.query && perplexityKey) {
-    const result = await searchPerplexity(intent.query, perplexityKey)
+  }
+
+  // For company-chat compare with no named peer: ask model to pick from live research only if needed
+  if (route.mode === 'compare' && !isPortfolio && route.companies.length === 0 && perplexityKey) {
+    const result = await searchPerplexity(
+      `${primaryCompanyName} closest public company peers competitors overview`,
+      perplexityKey,
+    )
     if (result.content) {
       contextBlocks.push(
-        `--- LIVE RESEARCH: "${intent.query}" ---\n${result.content}`,
+        `--- PEER CANDIDATES (live search — use only to choose one peer and compare carefully) ---\n${result.content}`,
+      )
+      extraSources.push(...result.sources)
+      route.needs_live_research = true
+    }
+  }
+
+  if (route.needs_live_research && route.query && perplexityKey) {
+    const result = await searchPerplexity(route.query, perplexityKey)
+    if (result.content) {
+      contextBlocks.push(
+        `--- LIVE RESEARCH: "${route.query}" ---\n${result.content}`,
+      )
+      extraSources.push(...result.sources)
+    }
+  } else if (
+    route.needs_live_research &&
+    !route.query &&
+    perplexityKey &&
+    (route.mode === 'theme' || route.mode === 'technical')
+  ) {
+    const fallbackQuery = message.slice(0, 180)
+    const result = await searchPerplexity(fallbackQuery, perplexityKey)
+    if (result.content) {
+      contextBlocks.push(
+        `--- LIVE RESEARCH: "${fallbackQuery}" ---\n${result.content}`,
       )
       extraSources.push(...result.sources)
     }
   }
 
-  // 5. Build OpenAI message list
+  // 5. Build OpenAI message list with mode instruction
+  const modeInstruction = MODE_INSTRUCTIONS[route.mode]
+  const maxTokens =
+    route.mode === 'analyze' || route.mode === 'compare' || route.mode === 'portfolio_synthesis'
+      ? 1600
+      : 1400
+
   const openaiMessages: { role: string; content: string }[] = [
     { role: 'system', content: AFAQI_SYSTEM_PROMPT },
+    { role: 'system', content: modeInstruction },
     { role: 'system', content: `PRIMARY RESEARCH CONTEXT:\n\n${primaryContext}` },
     ...contextBlocks.map((block) => ({ role: 'system', content: block })),
     ...history.map((m) => ({ role: m.role, content: m.content })),
@@ -671,7 +892,7 @@ Deno.serve(async (req: Request) => {
       model: 'gpt-4o-mini',
       messages: openaiMessages,
       temperature: 0.3,
-      max_tokens: 1400,
+      max_tokens: maxTokens,
     }),
   })
 
@@ -782,5 +1003,3 @@ Deno.serve(async (req: Request) => {
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
   )
 })
-
-// deploy-ok

@@ -83,19 +83,21 @@ const COMPANY_STARTER_CHIPS: StarterChip[] = [
   {
     label: 'Analyze',
     prompt:
-      'Give me a structured research memo: official vs independent narratives, key financials, factual gaps, and what to verify next. No investment advice.',
+      'Analyze this company. Produce a structured research memo: takeaway, official narrative, independent narrative, financial snapshot, factual gaps, what to verify next. No investment advice.',
+  },
+  {
+    label: 'Compare',
+    prompt:
+      'Compare this company with its closest relevant peer. Produce a structured side-by-side: strategy, official vs independent narratives, financials, shared/divergent gaps, unresolved questions. No winner language or investment advice.',
   },
   {
     label: 'Gaps',
-    prompt: 'What are the factual gaps in the research, and why do they matter?',
+    prompt: 'What are the factual gaps in the research card, and why do they matter?',
   },
   {
-    label: 'Official vs media',
-    prompt: 'Compare the official company narrative with the independent media/analyst narrative. Where do they align or diverge?',
-  },
-  {
-    label: 'Financials',
-    prompt: 'Summarize the financial highlights from the research card and note anything missing or unclear.',
+    label: 'Theme',
+    prompt:
+      'What sector or technology theme matters most for this company right now, and how does the research card connect to it? Separate confirmed links from uncertain ones.',
   },
 ]
 
@@ -106,14 +108,14 @@ const PORTFOLIO_STARTER_CHIPS: StarterChip[] = [
       'Synthesize the main cross-portfolio themes from the digest and company research cards. Name specific holdings.',
   },
   {
+    label: 'Compare',
+    prompt:
+      'Compare the two holdings that look most narratively divergent (official vs independent). Structured side-by-side, no winner language.',
+  },
+  {
     label: 'Risks & gaps',
     prompt:
       'What shared risks or factual gaps stand out across my watchlist? Be specific about which companies.',
-  },
-  {
-    label: 'Compare holdings',
-    prompt:
-      'Compare the two holdings that look most narratively divergent (official vs independent). Explain the contrast with sources.',
   },
   {
     label: 'Dig deeper',
