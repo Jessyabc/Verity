@@ -161,8 +161,6 @@ export async function ensureAfaqiSpeechCached(displayText: string): Promise<stri
 
 type SpeakOptions = {
   onPlaybackEnd?: () => void
-  /** Called when audio is ready but autoplay was disabled (e.g. user left chat). */
-  onCachedWithoutPlay?: () => void
 }
 
 /**
@@ -192,12 +190,10 @@ export async function speakAfaqiMessage(
 
   // User tapped stop, or a newer speak superseded this one.
   if (epochAtStart !== speakEpoch) {
-    options?.onCachedWithoutPlay?.()
     return 'cached'
   }
 
   if (!autoplayAllowed) {
-    options?.onCachedWithoutPlay?.()
     return 'cached'
   }
 
