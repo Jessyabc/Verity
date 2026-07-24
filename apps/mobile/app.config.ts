@@ -49,6 +49,8 @@ const config: ExpoConfig = {
       ITSAppUsesNonExemptEncryption: false,
       // Allow the system browser to open any https:// URL
       LSApplicationQueriesSchemes: ['https', 'http'],
+      // Continue Afaqi TTS playback if the user backgrounds the app while listening.
+      UIBackgroundModes: ['audio'],
     },
   },
   android: {

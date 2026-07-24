@@ -36,7 +36,7 @@ import { supabase } from '@/lib/supabase'
 import { font, radius, space } from '@/constants/theme'
 import { fetchMessages, fetchOlderMessages, type ChatMessageRow } from '@/lib/chatApi'
 import { fetchWatchlistDigest } from '@/lib/watchlistDigest'
-import { speakAfaqiMessage, stopAfaqiSpeech } from '@/lib/afaqiSpeech'
+import { speakAfaqiMessage, stopAfaqiSpeech, setAfaqiSpeechAutoplay } from '@/lib/afaqiSpeech'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -345,8 +345,11 @@ export default function ChatScreen() {
   const listRef = useRef<FlatList>(null)
 
   useEffect(() => {
+    setAfaqiSpeechAutoplay(true)
     return () => {
-      void stopAfaqiSpeech()
+      // Leave the conversation: stop playback, but let any in-flight TTS finish
+      // and stay cached for this session (autoplay off so it won't start elsewhere).
+      setAfaqiSpeechAutoplay(false)
     }
   }, [])
 
@@ -372,12 +375,14 @@ export default function ChatScreen() {
       setTtsBusyId(msg.id)
       setTtsPlayingId(null)
       try {
-        await speakAfaqiMessage(msg.content, {
+        const result = await speakAfaqiMessage(msg.content, {
           onPlaybackEnd: () => {
             setTtsPlayingId((cur) => (cur === msg.id ? null : cur))
           },
         })
-        setTtsPlayingId(msg.id)
+        if (result === 'played') {
+          setTtsPlayingId(msg.id)
+        }
       } catch (e) {
         Alert.alert('Voice', e instanceof Error ? e.message : 'Playback failed')
       } finally {
