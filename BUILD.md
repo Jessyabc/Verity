@@ -67,6 +67,9 @@
 supabase functions deploy research-company
 supabase functions deploy admin-upsert-company
 supabase functions deploy watchlist-brief
+supabase functions deploy afaqi-chat
+supabase functions deploy generate-watchlist-digest
+supabase functions deploy afaqi-tts
 ```
 
 **Secrets** (Dashboard → Edge Functions → Secrets, or `supabase secrets set`): `PERPLEXITY_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL` (your admin email; must match `VITE_ADMIN_EMAIL` in Vercel for the Admin UI link). `SUPABASE_ANON_KEY` is required so functions can validate the caller’s JWT. **`watchlist-brief`** also needs **`OPENAI_API_KEY`** (same key as document enrichment; optional override `OPENAI_WATCHLIST_MODEL`, default `gpt-4o-mini`).

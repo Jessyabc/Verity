@@ -77,6 +77,51 @@ const AFAQI_WAITING_PHRASES = [
   'Verifying against saved research…',
 ] as const
 
+type StarterChip = { label: string; prompt: string }
+
+const COMPANY_STARTER_CHIPS: StarterChip[] = [
+  {
+    label: 'Analyze',
+    prompt:
+      'Give me a structured research memo: official vs independent narratives, key financials, factual gaps, and what to verify next. No investment advice.',
+  },
+  {
+    label: 'Gaps',
+    prompt: 'What are the factual gaps in the research, and why do they matter?',
+  },
+  {
+    label: 'Official vs media',
+    prompt: 'Compare the official company narrative with the independent media/analyst narrative. Where do they align or diverge?',
+  },
+  {
+    label: 'Financials',
+    prompt: 'Summarize the financial highlights from the research card and note anything missing or unclear.',
+  },
+]
+
+const PORTFOLIO_STARTER_CHIPS: StarterChip[] = [
+  {
+    label: 'Themes',
+    prompt:
+      'Synthesize the main cross-portfolio themes from the digest and company research cards. Name specific holdings.',
+  },
+  {
+    label: 'Risks & gaps',
+    prompt:
+      'What shared risks or factual gaps stand out across my watchlist? Be specific about which companies.',
+  },
+  {
+    label: 'Compare holdings',
+    prompt:
+      'Compare the two holdings that look most narratively divergent (official vs independent). Explain the contrast with sources.',
+  },
+  {
+    label: 'Dig deeper',
+    prompt:
+      'Which holding on my watchlist most deserves a deeper research follow-up right now, and what should I ask next?',
+  },
+]
+
 function rowToMessage(row: ChatMessageRow): Message {
   return {
     id: row.id,
@@ -382,7 +427,7 @@ export default function ChatScreen() {
             id: 'welcome',
             role: 'assistant',
             content: digestText
-              ? `${digestText}\n\nAsk me anything about this — themes, risks, cross-company comparisons, or what to dig into next.`
+              ? `${digestText}\n\nAsk me anything — or tap a starter below for themes, risks, comparisons, or what to dig into next.`
               : 'Your portfolio summary is not ready yet. Pull up the watchlist and tap to generate it, then come back.',
           }])
         } else {
@@ -390,11 +435,14 @@ export default function ChatScreen() {
           const cache = await fetchResearchCacheRow(slug)
           const itemCount = cache?.items?.length ?? 0
           const compName = cache?.company_name ?? slug
+          const hasNarratives = Boolean(
+            cache?.company_narrative?.trim() || cache?.media_narrative?.trim(),
+          )
           setMessages([{
             id: 'welcome',
             role: 'assistant',
-            content: itemCount > 0
-              ? `I have ${itemCount} research source${itemCount === 1 ? '' : 's'} loaded for ${compName}. What would you like to explore?`
+            content: itemCount > 0 || hasNarratives
+              ? `I have the full research card loaded for ${compName} — narratives, financials, gaps, and sources. Tap a starter below or ask anything.`
               : `No research has been run for ${slug} yet. Go back to the company profile and hit "Refresh" first, then return here.`,
           }])
         }
@@ -424,8 +472,8 @@ export default function ChatScreen() {
     }
   }, [conversationId, loadingOlder, hasOlderMessages, messages])
 
-  const sendMessage = useCallback(async () => {
-    const text = input.trim()
+  const sendMessage = useCallback(async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim()
     if (!text || loading || !user) return
 
     const userMsg: Message = {
@@ -483,6 +531,10 @@ export default function ChatScreen() {
     }
   }, [input, loading, slug, conversationId, user])
 
+  const hasUserMessage = messages.some((m) => m.role === 'user')
+  const starterChips = isPortfolio ? PORTFOLIO_STARTER_CHIPS : COMPANY_STARTER_CHIPS
+  const showStarterChips = historyReady && !loading && !hasUserMessage
+
   // Context pill label
   const contextLabel = extraCompanyNames.length > 0
     ? `${companyName} + ${extraCompanyNames.join(', ')}`
@@ -539,6 +591,29 @@ export default function ChatScreen() {
           if (loading) listRef.current?.scrollToEnd({ animated: true })
         }}
       />
+
+      {showStarterChips ? (
+        <View style={styles.chipsWrap}>
+          {starterChips.map((chip) => (
+            <Pressable
+              key={chip.label}
+              style={({ pressed }) => [
+                styles.chip,
+                {
+                  borderColor: colors.stroke,
+                  backgroundColor: colors.surfaceSolid,
+                  opacity: pressed ? 0.85 : 1,
+                },
+              ]}
+              onPress={() => void sendMessage(chip.prompt)}
+              accessibilityRole="button"
+              accessibilityLabel={chip.label}
+            >
+              <Text style={[styles.chipText, { color: colors.accent }]}>{chip.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
 
       {/* Input bar */}
       <View
@@ -684,6 +759,21 @@ const styles = StyleSheet.create({
     maxWidth: 160,
   },
   sourceChipText: { fontFamily: font.medium, fontSize: 11 },
+
+  chipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space.xs,
+    paddingHorizontal: space.md,
+    paddingBottom: space.sm,
+  },
+  chip: {
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs + 2,
+  },
+  chipText: { fontFamily: font.medium, fontSize: 13 },
 
   // Input bar
   inputBar: {

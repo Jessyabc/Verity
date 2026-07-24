@@ -32,20 +32,25 @@ Your job is to help users explore company research, market context, and related 
 
 NON-NEGOTIABLE RULES
 - Use only the provided research context, source bundles, and any injected research.
+- Prefer the structured research card fields (official narrative, independent narrative, financial highlights, factual gaps) over headline snippets when both exist.
+- Keep official (company/IR/filings) and independent (media/analyst) layers distinct — never blend them into one undifferentiated "truth."
 - Never invent facts, numbers, dates, events, or conclusions.
 - Never answer from generic memory when a source-backed answer is possible.
 - If the evidence is incomplete, say so plainly.
 - If sources conflict, explain the conflict rather than forcing certainty.
 - Show source references, titles, or source labels whenever possible.
+- Never give investment advice, buy/sell recommendations, ratings, or price targets. Reframe advice-seeking into research questions and what to verify.
 
 WHEN ADDITIONAL CONTEXT IS PROVIDED
 - You may draw on injected cross-company research or live web research when it has been provided to you in the context blocks below.
 - Always attribute which company or search result each piece of information comes from.
+- Label live search as live/secondary when a Verity research card is also present.
 - If a company mentioned is not currently tracked in Verity, say so naturally (e.g. "This company isn't currently tracked in Verity's research database, but based on available sources…").
 
 WHAT YOU ARE FOR
 - Explaining and comparing company research across primary and referenced companies.
 - Answering factual, scientific, or market questions using live research when it has been provided.
+- Surfacing factual gaps and narrative divergences.
 - Pointing users to the right headlines and sources.
 - Helping users ask deeper follow-up questions.
 - Clarifying what is verified vs. interpreted.
@@ -57,7 +62,7 @@ WHAT YOU ARE NOT FOR
 
 RESPONSE STYLE
 - Start with the direct answer.
-- Give a short explanation.
+- Give a short explanation organized by evidence layer when relevant (Official / Independent / Financials / Gaps).
 - Cite or list supporting sources.
 - Keep responses concise and useful.
 - Be calm, precise, and analyst-like. Friendly but credible.
@@ -79,6 +84,19 @@ type ResearchItem = {
   snippet: string | null
   source: string | null
   published_at: string | null
+  narrative_scope?: 'company' | 'media' | string | null
+}
+
+type FactualGap =
+  | string
+  | { text?: string; category?: string }
+
+type FinancialMetric = { label?: string; value?: string; yoy?: string | null }
+
+type FinancialHighlights = {
+  period?: string
+  period_end?: string | null
+  metrics?: FinancialMetric[]
 }
 
 type CacheRow = {
@@ -87,6 +105,10 @@ type CacheRow = {
   ticker: string | null
   items: ResearchItem[]
   fetched_at: string
+  company_narrative?: string | null
+  media_narrative?: string | null
+  factual_gaps?: FactualGap[] | null
+  financial_highlights?: FinancialHighlights | null
 }
 
 type AfaqiSource = {
@@ -106,33 +128,136 @@ type PerplexityResult = {
   sources: AfaqiSource[]
 }
 
+const CACHE_SELECT =
+  'slug, company_name, ticker, items, fetched_at, company_narrative, media_narrative, factual_gaps, financial_highlights'
+
+const PORTFOLIO_SLUG = '__portfolio__'
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function buildResearchContext(row: CacheRow): string {
-  const ticker = row.ticker ? ` (${row.ticker})` : ''
-  const lines: string[] = [
-    `COMPANY: ${row.company_name}${ticker}`,
-    `Research last updated: ${new Date(row.fetched_at).toLocaleDateString('en-US', {
-      year: 'numeric', month: 'long', day: 'numeric',
-    })}`,
-    '',
-    'RESEARCH SOURCES:',
-  ]
-  row.items.forEach((item, i) => {
+function truncateText(text: string, maxChars: number): string {
+  const t = text.trim()
+  if (t.length <= maxChars) return t
+  return `${t.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`
+}
+
+function gapLine(g: FactualGap): string | null {
+  if (typeof g === 'string') {
+    const t = g.trim()
+    return t || null
+  }
+  if (g && typeof g === 'object') {
+    const text = typeof g.text === 'string' ? g.text.trim() : ''
+    if (!text) return null
+    const cat = typeof g.category === 'string' && g.category.trim() ? g.category.trim() : null
+    return cat ? `[${cat}] ${text}` : text
+  }
+  return null
+}
+
+function formatFinancialHighlights(
+  fh: FinancialHighlights | null | undefined,
+  maxMetrics = 8,
+): string[] {
+  if (!fh || typeof fh !== 'object') return []
+  const lines: string[] = []
+  const period = typeof fh.period === 'string' ? fh.period.trim() : ''
+  if (period) {
+    const end = typeof fh.period_end === 'string' && fh.period_end.trim() ? ` (ended ${fh.period_end.trim()})` : ''
+    lines.push(`Period: ${period}${end}`)
+  }
+  const metrics = Array.isArray(fh.metrics) ? fh.metrics : []
+  for (const m of metrics.slice(0, maxMetrics)) {
+    if (!m || typeof m !== 'object') continue
+    const label = typeof m.label === 'string' ? m.label.trim() : ''
+    const value = typeof m.value === 'string' ? m.value.trim() : ''
+    if (!label || !value) continue
+    const yoy = typeof m.yoy === 'string' && m.yoy.trim() ? ` (YoY ${m.yoy.trim()})` : ''
+    lines.push(`- ${label}: ${value}${yoy}`)
+  }
+  return lines
+}
+
+function formatSourceItems(items: ResearchItem[], cap: number): string[] {
+  const lines: string[] = []
+  items.slice(0, cap).forEach((item, i) => {
     lines.push(`${i + 1}. ${item.title}`)
     if (item.source) lines.push(`   Source: ${item.source}`)
     if (item.published_at) lines.push(`   Date: ${item.published_at}`)
     lines.push(`   URL: ${item.url}`)
-    if (item.snippet) lines.push(`   Summary: ${item.snippet}`)
+    if (item.snippet) lines.push(`   Summary: ${truncateText(item.snippet, 280)}`)
     lines.push('')
   })
+  return lines
+}
+
+/** Full research card for company chat / cross-company compare. */
+function buildResearchContext(row: CacheRow, opts?: { compact?: boolean }): string {
+  const compact = opts?.compact === true
+  const ticker = row.ticker ? ` (${row.ticker})` : ''
+  const narrativeMax = compact ? 520 : 2200
+  const sourceCap = compact ? 2 : 6
+  const metricCap = compact ? 4 : 8
+  const lines: string[] = [
+    `COMPANY RESEARCH CARD: ${row.company_name}${ticker}`,
+    `Research last updated: ${new Date(row.fetched_at).toLocaleDateString('en-US', {
+      year: 'numeric', month: 'long', day: 'numeric',
+    })}`,
+    '',
+  ]
+
+  const companyNarrative =
+    typeof row.company_narrative === 'string' ? row.company_narrative.trim() : ''
+  lines.push('OFFICIAL NARRATIVE (IR / filings / company materials):')
+  lines.push(companyNarrative ? truncateText(companyNarrative, narrativeMax) : '(not available in cache)')
+  lines.push('')
+
+  const mediaNarrative =
+    typeof row.media_narrative === 'string' ? row.media_narrative.trim() : ''
+  lines.push('INDEPENDENT NARRATIVE (media / analysts):')
+  lines.push(mediaNarrative ? truncateText(mediaNarrative, narrativeMax) : '(not available in cache)')
+  lines.push('')
+
+  const finLines = formatFinancialHighlights(row.financial_highlights ?? null, metricCap)
+  lines.push('FINANCIAL HIGHLIGHTS:')
+  if (finLines.length > 0) lines.push(...finLines)
+  else lines.push('(not available in cache)')
+  lines.push('')
+
+  const gaps = Array.isArray(row.factual_gaps) ? row.factual_gaps : []
+  const gapLines = gaps.map(gapLine).filter((x): x is string => Boolean(x)).slice(0, compact ? 3 : 5)
+  lines.push('FACTUAL GAPS:')
+  if (gapLines.length > 0) {
+    gapLines.forEach((g, i) => lines.push(`${i + 1}. ${g}`))
+  } else {
+    lines.push('(none cached)')
+  }
+  lines.push('')
+
+  const items = Array.isArray(row.items) ? row.items : []
+  const official = items.filter((it) => it.narrative_scope === 'company')
+  const independent = items.filter((it) => it.narrative_scope === 'media')
+  const unscoped = items.filter(
+    (it) => it.narrative_scope !== 'company' && it.narrative_scope !== 'media',
+  )
+
+  const officialList = (official.length > 0 ? official : unscoped).slice(0, sourceCap)
+  const independentList = independent.slice(0, sourceCap)
+
+  lines.push(`OFFICIAL SOURCES (top ${officialList.length}):`)
+  if (officialList.length === 0) lines.push('(none)')
+  else lines.push(...formatSourceItems(officialList, sourceCap))
+
+  lines.push(`INDEPENDENT SOURCES (top ${independentList.length}):`)
+  if (independentList.length === 0) lines.push('(none)')
+  else lines.push(...formatSourceItems(independentList, sourceCap))
+
   return lines.join('\n')
 }
 
-const PORTFOLIO_SLUG = '__portfolio__'
-
+/** Portfolio: digest + compact research cards per holding. */
 function buildPortfolioContext(digestText: string, rows: CacheRow[]): string {
   const lines: string[] = [
     'PORTFOLIO CONTEXT (Watchlist)',
@@ -154,28 +279,12 @@ function buildPortfolioContext(digestText: string, rows: CacheRow[]): string {
     return lines.join('\n')
   }
 
-  lines.push('WATCHLIST COMPANY RESEARCH (summaries):')
+  lines.push('WATCHLIST COMPANY RESEARCH CARDS (compact):')
   lines.push('')
 
   for (const row of rows) {
-    const ticker = row.ticker ? ` (${row.ticker})` : ''
-    const items = Array.isArray(row.items) ? row.items.slice(0, 3) : []
-    lines.push(`COMPANY: ${row.company_name}${ticker}`)
-    lines.push(`Research last updated: ${new Date(row.fetched_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`)
-    if (items.length === 0) {
-      lines.push('RESEARCH SOURCES: (none cached yet)')
-      lines.push('')
-      continue
-    }
-    lines.push('RESEARCH SOURCES:')
-    items.forEach((item, i) => {
-      lines.push(`${i + 1}. ${item.title}`)
-      if (item.source) lines.push(`   Source: ${item.source}`)
-      if (item.published_at) lines.push(`   Date: ${item.published_at}`)
-      lines.push(`   URL: ${item.url}`)
-      if (item.snippet) lines.push(`   Summary: ${item.snippet}`)
-      lines.push('')
-    })
+    lines.push(buildResearchContext(row, { compact: true }))
+    lines.push('---')
     lines.push('')
   }
 
@@ -432,12 +541,12 @@ Deno.serve(async (req: Request) => {
       : (watchRows ?? []).map((r: { company_slug: string }) => r.company_slug)
     )
       .filter((s: unknown): s is string => typeof s === 'string' && s.length > 0)
-      .slice(0, 12)
+      .slice(0, 8)
 
     const { data: cacheRows } = slugs.length > 0
       ? await db
         .from('company_research_cache')
-        .select('slug, company_name, ticker, items, fetched_at')
+        .select(CACHE_SELECT)
         .in('slug', slugs)
       : { data: [] }
 
@@ -450,7 +559,7 @@ Deno.serve(async (req: Request) => {
     // Company mode
     const { data: cacheRow } = await db
       .from('company_research_cache')
-      .select('slug, company_name, ticker, items, fetched_at')
+      .select(CACHE_SELECT)
       .eq('slug', slug)
       .maybeSingle()
 
@@ -494,7 +603,7 @@ Deno.serve(async (req: Request) => {
         // Try cache first
         const { data: otherCache } = await db
           .from('company_research_cache')
-          .select('slug, company_name, ticker, items, fetched_at')
+          .select(CACHE_SELECT)
           .eq('slug', foundCompany.slug)
           .maybeSingle()
 
@@ -562,7 +671,7 @@ Deno.serve(async (req: Request) => {
       model: 'gpt-4o-mini',
       messages: openaiMessages,
       temperature: 0.3,
-      max_tokens: 1000,
+      max_tokens: 1400,
     }),
   })
 
