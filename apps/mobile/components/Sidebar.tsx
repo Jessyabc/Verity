@@ -1,20 +1,21 @@
 /**
  * Sidebar — menu sits *under* the main shell; content pushes right (RNGH + Reanimated).
  *
- * Pan is tuned so vertical scrolling wins (failOffsetY) until horizontal intent is clear (activeOffsetX).
- * Left-swipe actions on nested screens register via `setLeftSwipeHandler` / `useLeftSwipeHandler`
- * (the root pan owns horizontal gestures; nested pans cannot reliably win).
+ * Pan is tuned so vertical scrolling wins until horizontal intent is clear.
+ * On company profiles, `useCompanyChatSwipeZones` makes the shell yield:
+ *   - left half → native edge-back
+ *   - right half → interactive chat reveal (CompanyChatReveal)
  *
  * Exports:
  *   SidebarProvider — wrap the main Stack (see app/_layout.tsx)
- *   useSidebar       — open / close / isOpen / setLeftSwipeHandler
- *   useLeftSwipeHandler — register a left-swipe action for the current screen
+ *   useSidebar — open / close / isOpen
+ *   useCompanyChatSwipeZones — enable 50/50 yield on company profile
  */
 
 import { useRouter, useSegments } from 'expo-router'
 import { BlurView } from 'expo-blur'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -48,6 +49,7 @@ import { supabase } from '@/lib/supabase'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SCREEN_WIDTH = Dimensions.get('window').width
+const MID_X = SCREEN_WIDTH * 0.5
 export const SIDEBAR_WIDTH = Math.min(Math.round(SCREEN_WIDTH * 0.82), 320)
 
 const SPRING_OPEN = { damping: 26, stiffness: 260, mass: 0.85 }
@@ -55,48 +57,32 @@ const SPRING_CLOSE = { damping: 28, stiffness: 280, mass: 0.9 }
 
 // ─── Context ───────────────────────────────────────────────────────────────────
 
-type LeftSwipeHandler = () => void
-
 type SidebarCtxType = {
   isOpen: boolean
   open: () => void
   close: () => void
-  /**
-   * Register a full-screen left-swipe action for the current screen
-   * (e.g. company profile → chat). Cleared on unmount.
-   * Handled by the root sidebar pan so nested GestureDetectors are not needed.
-   */
-  setLeftSwipeHandler: (handler: LeftSwipeHandler | null) => void
+  /** When true, shell pan yields left-half back + right-half chat reveal. */
+  setCompanyChatSwipeZones: (enabled: boolean) => void
 }
 
 const SidebarCtx = createContext<SidebarCtxType>({
   isOpen: false,
   open: () => {},
   close: () => {},
-  setLeftSwipeHandler: () => {},
+  setCompanyChatSwipeZones: () => {},
 })
 
 export function useSidebar() {
   return useContext(SidebarCtx)
 }
 
-/** Convenience: register a left-swipe handler for the lifetime of the screen. */
-export function useLeftSwipeHandler(handler: LeftSwipeHandler | null) {
-  const { setLeftSwipeHandler } = useSidebar()
-  const handlerRef = useRef(handler)
-  handlerRef.current = handler
-  const enabled = handler != null
-
+/** Enable 50/50 swipe zones for the lifetime of a company profile screen. */
+export function useCompanyChatSwipeZones(enabled: boolean) {
+  const { setCompanyChatSwipeZones } = useSidebar()
   useEffect(() => {
-    if (!enabled) {
-      setLeftSwipeHandler(null)
-      return
-    }
-    setLeftSwipeHandler(() => {
-      handlerRef.current?.()
-    })
-    return () => setLeftSwipeHandler(null)
-  }, [enabled, setLeftSwipeHandler])
+    setCompanyChatSwipeZones(enabled)
+    return () => setCompanyChatSwipeZones(false)
+  }, [enabled, setCompanyChatSwipeZones])
 }
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -105,20 +91,21 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const contentX = useSharedValue(0)
   const overlayOpacity = useSharedValue(0)
   const startX = useSharedValue(0)
+  const touchStartX = useSharedValue(0)
+  const touchStartY = useSharedValue(0)
+  const companyZones = useSharedValue(0)
   const [isOpen, setIsOpen] = useState(false)
-  const leftSwipeHandlerRef = useRef<LeftSwipeHandler | null>(null)
 
   const setOpen = useCallback((v: boolean) => {
     setIsOpen(v)
   }, [])
 
-  const setLeftSwipeHandler = useCallback((handler: LeftSwipeHandler | null) => {
-    leftSwipeHandlerRef.current = handler
-  }, [])
-
-  const invokeLeftSwipeHandler = useCallback(() => {
-    leftSwipeHandlerRef.current?.()
-  }, [])
+  const setCompanyChatSwipeZones = useCallback(
+    (enabled: boolean) => {
+      companyZones.value = enabled ? 1 : 0
+    },
+    [companyZones],
+  )
 
   const open = useCallback(() => {
     setIsOpen(true)
@@ -134,17 +121,46 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   }, [contentX, overlayOpacity, setOpen])
 
   /**
-   * Single root pan for the shell:
-   * - swipe right → open menu
-   * - swipe left (when closed) → optional screen handler (company → chat)
-   * Nested screen pans cannot reliably win against this detector, so left-swipe
-   * actions are registered via `setLeftSwipeHandler` instead.
+   * Shell pan: swipe right → open menu (default).
+   * With company zones: yield left half (edge-back) and right half (chat reveal).
    */
   const pan = useMemo(
     () =>
       Gesture.Pan()
-        .activeOffsetX([-32, 32])
-        .failOffsetY([-22, 22])
+        .manualActivation(true)
+        .onTouchesDown((e) => {
+          const t = e.allTouches[0]
+          touchStartX.value = t?.absoluteX ?? 0
+          touchStartY.value = t?.absoluteY ?? 0
+        })
+        .onTouchesMove((e, state) => {
+          const t = e.allTouches[0]
+          if (!t) return
+          const dx = t.absoluteX - touchStartX.value
+          const dy = t.absoluteY - touchStartY.value
+
+          if (Math.abs(dy) > 22 && Math.abs(dy) > Math.abs(dx)) {
+            state.fail()
+            return
+          }
+
+          // Menu already open — allow drag either way to close/adjust.
+          if (contentX.value > 2) {
+            if (Math.abs(dx) > 24) state.activate()
+            return
+          }
+
+          if (companyZones.value === 1) {
+            // Yield entire horizontal lane on company profiles:
+            // left half → native back, right half → chat reveal.
+            state.fail()
+            return
+          }
+
+          if (Math.abs(dx) > 32) {
+            state.activate()
+          }
+        })
         .onStart(() => {
           startX.value = contentX.value
         })
@@ -173,14 +189,6 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
             return
           }
 
-          // Menu closed + clear left swipe → screen handler (e.g. open chat)
-          if (
-            startX.value < 2 &&
-            (e.translationX < -48 || e.velocityX < -450)
-          ) {
-            runOnJS(invokeLeftSwipeHandler)()
-          }
-
           const shouldOpen = v > 420 || x > openCutoff
 
           if (shouldOpen) {
@@ -194,7 +202,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
             overlayOpacity.value = withTiming(0, { duration: 160 })
           }
         }),
-    [close, contentX, invokeLeftSwipeHandler, overlayOpacity, startX, setOpen],
+    [close, contentX, companyZones, overlayOpacity, startX, touchStartX, touchStartY, setOpen],
   )
 
   const contentAnimatedStyle = useAnimatedStyle(() => ({
@@ -206,8 +214,8 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   }))
 
   const ctx = useMemo(
-    () => ({ isOpen, open, close, setLeftSwipeHandler }),
-    [isOpen, open, close, setLeftSwipeHandler],
+    () => ({ isOpen, open, close, setCompanyChatSwipeZones }),
+    [isOpen, open, close, setCompanyChatSwipeZones],
   )
 
   return (

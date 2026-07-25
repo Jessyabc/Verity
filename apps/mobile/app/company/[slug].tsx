@@ -26,7 +26,8 @@ import { LinearGradient } from 'expo-linear-gradient'
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { LiquidGlassHeaderIconButton } from '@/components/LiquidGlass'
 import { VerityMark } from '@/components/VerityMark'
-import { useLeftSwipeHandler } from '@/components/Sidebar'
+import { CompanyChatReveal } from '@/components/CompanyChatReveal'
+import { useCompanyChatSwipeZones } from '@/components/Sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { font, radius, space } from '@/constants/theme'
 import { resolveConversationIdForSlug } from '@/lib/chatApi'
@@ -459,6 +460,7 @@ export default function CompanyScreen() {
 
   const brand = useAdaptiveBrand()
   const openingChatRef = useRef(false)
+  const prefetchedConversationIdRef = useRef<string | null>(null)
 
   const savedUrls = savedUrlSet(savedRows)
 
@@ -595,16 +597,29 @@ export default function CompanyScreen() {
   }
 
   /** Skip the conversation list — open latest thread or create one. */
-  const openChatDirectly = useCallback(async () => {
-    if (!user || !slug || openingChatRef.current) return
+  const openChatDirectly = useCallback(async (opts?: { fromSwipe?: boolean }) => {
+    if (!user || !slug || openingChatRef.current) {
+      throw new Error('Chat unavailable')
+    }
     openingChatRef.current = true
     setOpeningChat(true)
     try {
-      const id = await resolveConversationIdForSlug(user.id, slug)
+      const id =
+        prefetchedConversationIdRef.current ??
+        (await resolveConversationIdForSlug(user.id, slug))
+      prefetchedConversationIdRef.current = id
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-      router.push(`/chat/${slug}/${id}`)
+      router.push({
+        pathname: '/chat/[slug]/[conversationId]',
+        params: {
+          slug,
+          conversationId: id,
+          ...(opts?.fromSwipe ? { noAnimate: '1' } : {}),
+        },
+      })
     } catch (e) {
       setError(formatUnknownError(e))
+      throw e
     } finally {
       openingChatRef.current = false
       setOpeningChat(false)
@@ -619,7 +634,7 @@ export default function CompanyScreen() {
       Boolean(research?.media_narrative?.trim()) ||
       (Array.isArray(research?.factual_gaps) && research!.factual_gaps!.length > 0)
     if (ready) {
-      void openChatDirectly()
+      void openChatDirectly().catch(() => {})
       return
     }
     if (!company) return
@@ -638,9 +653,43 @@ export default function CompanyScreen() {
     })()
   }, [research, researchBusy, openChatDirectly, company])
 
-  // Root sidebar pan owns horizontal swipes — register left-swipe → chat here
-  // instead of a nested GestureDetector (those cannot reliably win).
-  useLeftSwipeHandler(openChatOrResearch)
+  const openChatFromSwipe = useCallback(async () => {
+    if (researchBusy || openingChatRef.current) {
+      throw new Error('Chat busy')
+    }
+    const ready =
+      Boolean(research?.items?.length) ||
+      Boolean(research?.company_narrative?.trim()) ||
+      Boolean(research?.media_narrative?.trim()) ||
+      (Array.isArray(research?.factual_gaps) && research!.factual_gaps!.length > 0)
+    if (!ready) {
+      throw new Error('No research yet')
+    }
+    await openChatDirectly({ fromSwipe: true })
+  }, [research, researchBusy, openChatDirectly])
+
+  // Yield shell pan so left-half back + right-half chat reveal can own gestures.
+  const swipeZonesEnabled = Boolean(user) && !loading && Boolean(company)
+  useCompanyChatSwipeZones(swipeZonesEnabled)
+
+  // Prefetch conversation id so the swipe reveal can land instantly.
+  useEffect(() => {
+    if (!user || !slug) {
+      prefetchedConversationIdRef.current = null
+      return
+    }
+    let cancelled = false
+    void resolveConversationIdForSlug(user.id, slug)
+      .then((id) => {
+        if (!cancelled) prefetchedConversationIdRef.current = id
+      })
+      .catch(() => {
+        /* non-critical — resolve again on open */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user, slug])
 
   const handleSaveToggle = async (
     item: ResearchNewsItem,
@@ -726,6 +775,12 @@ export default function CompanyScreen() {
   const headerLine = company.ticker ? `${company.name} · ${company.ticker}` : company.name
 
   return (
+    <CompanyChatReveal
+      enabled={hasResearch && Boolean(user)}
+      brand={brand}
+      companyName={company.name}
+      onOpenChat={openChatFromSwipe}
+    >
     <View style={[styles.container, { backgroundColor: brand.navy }]}>
       <ScrollView
         style={styles.scroll}
@@ -884,7 +939,7 @@ export default function CompanyScreen() {
 
         {hasResearch ? (
           <Text style={[styles.swipeHint, { color: brand.onNavySubtle }]}>
-            Swipe left anytime to open chat
+            Swipe left from the right half to open chat
           </Text>
         ) : null}
 
@@ -902,6 +957,7 @@ export default function CompanyScreen() {
       ) : null}
 
     </View>
+    </CompanyChatReveal>
   )
 }
 
