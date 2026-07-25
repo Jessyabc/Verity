@@ -2,16 +2,19 @@
  * Sidebar — menu sits *under* the main shell; content pushes right (RNGH + Reanimated).
  *
  * Pan is tuned so vertical scrolling wins (failOffsetY) until horizontal intent is clear (activeOffsetX).
+ * Left-swipe actions on nested screens register via `setLeftSwipeHandler` / `useLeftSwipeHandler`
+ * (the root pan owns horizontal gestures; nested pans cannot reliably win).
  *
  * Exports:
  *   SidebarProvider — wrap the main Stack (see app/_layout.tsx)
- *   useSidebar       — open / close / isOpen
+ *   useSidebar       — open / close / isOpen / setLeftSwipeHandler
+ *   useLeftSwipeHandler — register a left-swipe action for the current screen
  */
 
 import { useRouter, useSegments } from 'expo-router'
 import { BlurView } from 'expo-blur'
 import Ionicons from '@expo/vector-icons/Ionicons'
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -52,20 +55,48 @@ const SPRING_CLOSE = { damping: 28, stiffness: 280, mass: 0.9 }
 
 // ─── Context ───────────────────────────────────────────────────────────────────
 
+type LeftSwipeHandler = () => void
+
 type SidebarCtxType = {
   isOpen: boolean
   open: () => void
   close: () => void
+  /**
+   * Register a full-screen left-swipe action for the current screen
+   * (e.g. company profile → chat). Cleared on unmount.
+   * Handled by the root sidebar pan so nested GestureDetectors are not needed.
+   */
+  setLeftSwipeHandler: (handler: LeftSwipeHandler | null) => void
 }
 
 const SidebarCtx = createContext<SidebarCtxType>({
   isOpen: false,
   open: () => {},
   close: () => {},
+  setLeftSwipeHandler: () => {},
 })
 
 export function useSidebar() {
   return useContext(SidebarCtx)
+}
+
+/** Convenience: register a left-swipe handler for the lifetime of the screen. */
+export function useLeftSwipeHandler(handler: LeftSwipeHandler | null) {
+  const { setLeftSwipeHandler } = useSidebar()
+  const handlerRef = useRef(handler)
+  handlerRef.current = handler
+  const enabled = handler != null
+
+  useEffect(() => {
+    if (!enabled) {
+      setLeftSwipeHandler(null)
+      return
+    }
+    setLeftSwipeHandler(() => {
+      handlerRef.current?.()
+    })
+    return () => setLeftSwipeHandler(null)
+  }, [enabled, setLeftSwipeHandler])
 }
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -75,9 +106,18 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const overlayOpacity = useSharedValue(0)
   const startX = useSharedValue(0)
   const [isOpen, setIsOpen] = useState(false)
+  const leftSwipeHandlerRef = useRef<LeftSwipeHandler | null>(null)
 
   const setOpen = useCallback((v: boolean) => {
     setIsOpen(v)
+  }, [])
+
+  const setLeftSwipeHandler = useCallback((handler: LeftSwipeHandler | null) => {
+    leftSwipeHandlerRef.current = handler
+  }, [])
+
+  const invokeLeftSwipeHandler = useCallback(() => {
+    leftSwipeHandlerRef.current?.()
   }, [])
 
   const open = useCallback(() => {
@@ -94,62 +134,68 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   }, [contentX, overlayOpacity, setOpen])
 
   /**
-   * Full-screen pan: drag to open/close; pairs with overlay `Pressable`.
-   * When closed, only rightward pans activate — left swipes fail so nested
-   * gestures (e.g. company → chat) can win instead of being swallowed here.
+   * Single root pan for the shell:
+   * - swipe right → open menu
+   * - swipe left (when closed) → optional screen handler (company → chat)
+   * Nested screen pans cannot reliably win against this detector, so left-swipe
+   * actions are registered via `setLeftSwipeHandler` instead.
    */
-  const pan = useMemo(() => {
-    const base = Gesture.Pan()
-      .activeOffsetX(isOpen ? ([-32, 32] as [number, number]) : ([-10000, 32] as [number, number]))
-      .failOffsetY([-22, 22])
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX([-32, 32])
+        .failOffsetY([-22, 22])
+        .onStart(() => {
+          startX.value = contentX.value
+        })
+        .onUpdate((e) => {
+          const next = Math.min(
+            SIDEBAR_WIDTH,
+            Math.max(0, startX.value + e.translationX),
+          )
+          contentX.value = next
+          overlayOpacity.value = interpolate(next, [0, SIDEBAR_WIDTH], [0, 0.45])
+          if (next > 10) {
+            runOnJS(setOpen)(true)
+          }
+        })
+        .onEnd((e) => {
+          const x = contentX.value
+          const v = e.velocityX
+          const openCutoff = SIDEBAR_WIDTH * 0.65
+          const isTap =
+            Math.abs(e.translationX) < 12 &&
+            Math.abs(e.translationY) < 12 &&
+            Math.abs(v) < 220
 
-    const withFail = isOpen
-      ? base
-      : base.failOffsetX([-16, 10000] as [number, number])
+          if (isTap && startX.value >= SIDEBAR_WIDTH - 2 && x >= SIDEBAR_WIDTH - 2) {
+            runOnJS(close)()
+            return
+          }
 
-    return withFail
-      .onStart(() => {
-        startX.value = contentX.value
-      })
-      .onUpdate((e) => {
-        const next = Math.min(
-          SIDEBAR_WIDTH,
-          Math.max(0, startX.value + e.translationX),
-        )
-        contentX.value = next
-        overlayOpacity.value = interpolate(next, [0, SIDEBAR_WIDTH], [0, 0.45])
-        if (next > 10) {
-          runOnJS(setOpen)(true)
-        }
-      })
-      .onEnd((e) => {
-        const x = contentX.value
-        const v = e.velocityX
-        const openCutoff = SIDEBAR_WIDTH * 0.65
-        const isTap =
-          Math.abs(e.translationX) < 12 &&
-          Math.abs(e.translationY) < 12 &&
-          Math.abs(v) < 220
+          // Menu closed + clear left swipe → screen handler (e.g. open chat)
+          if (
+            startX.value < 2 &&
+            (e.translationX < -48 || e.velocityX < -450)
+          ) {
+            runOnJS(invokeLeftSwipeHandler)()
+          }
 
-        if (isTap && startX.value >= SIDEBAR_WIDTH - 2 && x >= SIDEBAR_WIDTH - 2) {
-          runOnJS(close)()
-          return
-        }
+          const shouldOpen = v > 420 || x > openCutoff
 
-        const shouldOpen = v > 420 || x > openCutoff
-
-        if (shouldOpen) {
-          contentX.value = withSpring(SIDEBAR_WIDTH, SPRING_OPEN)
-          overlayOpacity.value = withTiming(0.45, { duration: 200 })
-          runOnJS(setOpen)(true)
-        } else {
-          contentX.value = withSpring(0, SPRING_CLOSE, (finished) => {
-            if (finished) runOnJS(setOpen)(false)
-          })
-          overlayOpacity.value = withTiming(0, { duration: 160 })
-        }
-      })
-  }, [close, contentX, isOpen, overlayOpacity, startX, setOpen])
+          if (shouldOpen) {
+            contentX.value = withSpring(SIDEBAR_WIDTH, SPRING_OPEN)
+            overlayOpacity.value = withTiming(0.45, { duration: 200 })
+            runOnJS(setOpen)(true)
+          } else {
+            contentX.value = withSpring(0, SPRING_CLOSE, (finished) => {
+              if (finished) runOnJS(setOpen)(false)
+            })
+            overlayOpacity.value = withTiming(0, { duration: 160 })
+          }
+        }),
+    [close, contentX, invokeLeftSwipeHandler, overlayOpacity, startX, setOpen],
+  )
 
   const contentAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: contentX.value }],
@@ -159,8 +205,13 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     opacity: overlayOpacity.value,
   }))
 
+  const ctx = useMemo(
+    () => ({ isOpen, open, close, setLeftSwipeHandler }),
+    [isOpen, open, close, setLeftSwipeHandler],
+  )
+
   return (
-    <SidebarCtx.Provider value={{ isOpen, open, close }}>
+    <SidebarCtx.Provider value={ctx}>
       <GestureDetector gesture={pan}>
         <View style={styles.root} collapsable={false}>
           <SidebarPanel onNavigate={close} />

@@ -18,16 +18,15 @@ import {
   UIManager,
   View,
 } from 'react-native'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BlurView } from 'expo-blur'
 import * as Haptics from 'expo-haptics'
 import { LinearGradient } from 'expo-linear-gradient'
-import { runOnJS } from 'react-native-reanimated'
 
 import Ionicons from '@expo/vector-icons/Ionicons'
 import { LiquidGlassHeaderIconButton } from '@/components/LiquidGlass'
 import { VerityMark } from '@/components/VerityMark'
+import { useLeftSwipeHandler } from '@/components/Sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 import { font, radius, space } from '@/constants/theme'
 import { resolveConversationIdForSlug } from '@/lib/chatApi'
@@ -639,22 +638,9 @@ export default function CompanyScreen() {
     })()
   }, [research, researchBusy, openChatDirectly, company])
 
-  // Swipe left → chat (full screen). Sidebar fails left-swipes when closed so this can win.
-  // ScrollView is from react-native (not RNGH) so the pan is not blocked by a nested native handler.
-  const swipeToChatGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .activeOffsetX([-24, 10000])
-        .failOffsetX([-10000, 28])
-        .failOffsetY([-20, 20])
-        .onEnd((e) => {
-          const leftEnough = e.translationX < -64 || e.velocityX < -550
-          if (leftEnough) {
-            runOnJS(openChatOrResearch)()
-          }
-        }),
-    [openChatOrResearch],
-  )
+  // Root sidebar pan owns horizontal swipes — register left-swipe → chat here
+  // instead of a nested GestureDetector (those cannot reliably win).
+  useLeftSwipeHandler(openChatOrResearch)
 
   const handleSaveToggle = async (
     item: ResearchNewsItem,
@@ -740,8 +726,7 @@ export default function CompanyScreen() {
   const headerLine = company.ticker ? `${company.name} · ${company.ticker}` : company.name
 
   return (
-    <GestureDetector gesture={swipeToChatGesture}>
-    <View style={[styles.container, { backgroundColor: brand.navy }]} collapsable={false}>
+    <View style={[styles.container, { backgroundColor: brand.navy }]}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -917,7 +902,6 @@ export default function CompanyScreen() {
       ) : null}
 
     </View>
-    </GestureDetector>
   )
 }
 

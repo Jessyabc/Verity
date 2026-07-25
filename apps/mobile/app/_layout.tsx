@@ -104,7 +104,10 @@ function AuthAwareStack() {
           options={{
             headerShown: true,
             headerBackTitle: 'Back',
-            ...stackScreenGesture,
+            // Edge-back only — full-screen pop fights the shell pan (sidebar + swipe-to-chat).
+            gestureEnabled: true,
+            fullScreenGestureEnabled: false,
+            animation: 'slide_from_right',
           }}
         />
         <Stack.Screen
