@@ -93,55 +93,63 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     overlayOpacity.value = withTiming(0, { duration: 160 })
   }, [contentX, overlayOpacity, setOpen])
 
-  /** Full-screen pan: drag anywhere (with horizontal intent) to open/close; pairs with overlay `Pressable`. */
-  const pan = useMemo(
-    () =>
-      Gesture.Pan()
-        .activeOffsetX([-32, 32])
-        .failOffsetY([-22, 22])
-        .onStart(() => {
-          startX.value = contentX.value
-        })
-        .onUpdate((e) => {
-          const next = Math.min(
-            SIDEBAR_WIDTH,
-            Math.max(0, startX.value + e.translationX),
-          )
-          contentX.value = next
-          overlayOpacity.value = interpolate(next, [0, SIDEBAR_WIDTH], [0, 0.45])
-          if (next > 10) {
-            runOnJS(setOpen)(true)
-          }
-        })
-        .onEnd((e) => {
-          const x = contentX.value
-          const v = e.velocityX
-          const openCutoff = SIDEBAR_WIDTH * 0.65
-          const isTap =
-            Math.abs(e.translationX) < 12 &&
-            Math.abs(e.translationY) < 12 &&
-            Math.abs(v) < 220
+  /**
+   * Full-screen pan: drag to open/close; pairs with overlay `Pressable`.
+   * When closed, only rightward pans activate — left swipes fail so nested
+   * gestures (e.g. company → chat) can win instead of being swallowed here.
+   */
+  const pan = useMemo(() => {
+    const base = Gesture.Pan()
+      .activeOffsetX(isOpen ? ([-32, 32] as [number, number]) : ([-10000, 32] as [number, number]))
+      .failOffsetY([-22, 22])
 
-          if (isTap && startX.value >= SIDEBAR_WIDTH - 2 && x >= SIDEBAR_WIDTH - 2) {
-            runOnJS(close)()
-            return
-          }
+    const withFail = isOpen
+      ? base
+      : base.failOffsetX([-16, 10000] as [number, number])
 
-          const shouldOpen = v > 420 || x > openCutoff
+    return withFail
+      .onStart(() => {
+        startX.value = contentX.value
+      })
+      .onUpdate((e) => {
+        const next = Math.min(
+          SIDEBAR_WIDTH,
+          Math.max(0, startX.value + e.translationX),
+        )
+        contentX.value = next
+        overlayOpacity.value = interpolate(next, [0, SIDEBAR_WIDTH], [0, 0.45])
+        if (next > 10) {
+          runOnJS(setOpen)(true)
+        }
+      })
+      .onEnd((e) => {
+        const x = contentX.value
+        const v = e.velocityX
+        const openCutoff = SIDEBAR_WIDTH * 0.65
+        const isTap =
+          Math.abs(e.translationX) < 12 &&
+          Math.abs(e.translationY) < 12 &&
+          Math.abs(v) < 220
 
-          if (shouldOpen) {
-            contentX.value = withSpring(SIDEBAR_WIDTH, SPRING_OPEN)
-            overlayOpacity.value = withTiming(0.45, { duration: 200 })
-            runOnJS(setOpen)(true)
-          } else {
-            contentX.value = withSpring(0, SPRING_CLOSE, (finished) => {
-              if (finished) runOnJS(setOpen)(false)
-            })
-            overlayOpacity.value = withTiming(0, { duration: 160 })
-          }
-        }),
-    [close, contentX, overlayOpacity, startX, setOpen],
-  )
+        if (isTap && startX.value >= SIDEBAR_WIDTH - 2 && x >= SIDEBAR_WIDTH - 2) {
+          runOnJS(close)()
+          return
+        }
+
+        const shouldOpen = v > 420 || x > openCutoff
+
+        if (shouldOpen) {
+          contentX.value = withSpring(SIDEBAR_WIDTH, SPRING_OPEN)
+          overlayOpacity.value = withTiming(0.45, { duration: 200 })
+          runOnJS(setOpen)(true)
+        } else {
+          contentX.value = withSpring(0, SPRING_CLOSE, (finished) => {
+            if (finished) runOnJS(setOpen)(false)
+          })
+          overlayOpacity.value = withTiming(0, { duration: 160 })
+        }
+      })
+  }, [close, contentX, isOpen, overlayOpacity, startX, setOpen])
 
   const contentAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: contentX.value }],

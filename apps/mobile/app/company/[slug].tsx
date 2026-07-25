@@ -12,12 +12,13 @@ import {
   Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   UIManager,
   View,
 } from 'react-native'
-import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BlurView } from 'expo-blur'
 import * as Haptics from 'expo-haptics'
@@ -638,14 +639,16 @@ export default function CompanyScreen() {
     })()
   }, [research, researchBusy, openChatDirectly, company])
 
-  // Swipe left → chat (does not fight sidebar, which opens on swipe right).
+  // Swipe left → chat (full screen). Sidebar fails left-swipes when closed so this can win.
+  // ScrollView is from react-native (not RNGH) so the pan is not blocked by a nested native handler.
   const swipeToChatGesture = useMemo(
     () =>
       Gesture.Pan()
-        .activeOffsetX([-28, 1000])
-        .failOffsetY([-18, 18])
+        .activeOffsetX([-24, 10000])
+        .failOffsetX([-10000, 28])
+        .failOffsetY([-20, 20])
         .onEnd((e) => {
-          const leftEnough = e.translationX < -72 || e.velocityX < -650
+          const leftEnough = e.translationX < -64 || e.velocityX < -550
           if (leftEnough) {
             runOnJS(openChatOrResearch)()
           }
@@ -738,7 +741,7 @@ export default function CompanyScreen() {
 
   return (
     <GestureDetector gesture={swipeToChatGesture}>
-    <View style={[styles.container, { backgroundColor: brand.navy }]}>
+    <View style={[styles.container, { backgroundColor: brand.navy }]} collapsable={false}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -1076,8 +1079,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
     top: '42%',
-    width: 18,
-    height: 56,
+    width: 22,
+    height: 64,
     borderTopLeftRadius: 10,
     borderBottomLeftRadius: 10,
     backgroundColor: 'rgba(47, 180, 176, 0.18)',
