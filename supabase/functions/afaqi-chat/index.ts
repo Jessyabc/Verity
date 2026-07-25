@@ -112,6 +112,18 @@ type CacheRow = {
   media_narrative?: string | null
   factual_gaps?: FactualGap[] | null
   financial_highlights?: FinancialHighlights | null
+  change_summary?: {
+    bullets?: string[]
+    previous_fetched_at?: string | null
+    sources_added?: number
+    sources_removed?: number
+    gaps_added?: number
+    gaps_removed?: number
+    metrics_changed?: Array<{ label?: string; from?: string; to?: string }>
+    company_narrative_changed?: boolean
+    media_narrative_changed?: boolean
+  } | null
+  research_version?: number | null
 }
 
 type AfaqiSource = {
@@ -141,7 +153,7 @@ type PerplexityResult = {
 }
 
 const CACHE_SELECT =
-  'slug, company_name, ticker, items, fetched_at, company_narrative, media_narrative, factual_gaps, financial_highlights'
+  'slug, company_name, ticker, items, fetched_at, company_narrative, media_narrative, factual_gaps, financial_highlights, change_summary, research_version'
 
 const PORTFOLIO_SLUG = '__portfolio__'
 
@@ -307,6 +319,16 @@ function buildResearchContext(row: CacheRow, opts?: { compact?: boolean }): stri
     ...freshnessBlock(row),
     '',
   ]
+
+  const change = row.change_summary
+  const changeBullets = Array.isArray(change?.bullets)
+    ? change!.bullets!.filter((b): b is string => typeof b === 'string' && b.trim().length > 0)
+    : []
+  if (changeBullets.length > 0) {
+    lines.push('WHAT CHANGED (since previous refresh — do not invent beyond this list):')
+    changeBullets.slice(0, compact ? 3 : 8).forEach((b, i) => lines.push(`${i + 1}. ${b}`))
+    lines.push('')
+  }
 
   const companyNarrative =
     typeof row.company_narrative === 'string' ? row.company_narrative.trim() : ''

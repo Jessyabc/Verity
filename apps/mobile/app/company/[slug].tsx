@@ -40,6 +40,7 @@ import {
   getResearchFreshness,
 } from '@/lib/researchFreshness'
 import { ConfidenceMeter } from '@/components/ConfidenceMeter'
+import { WhatChangedCard } from '@/components/WhatChangedCard'
 import { itemIsCompanySource, itemIsMediaSource } from '@/lib/headlineGrouping'
 import {
   deleteWatchlistSlug,
@@ -851,6 +852,11 @@ export default function CompanyScreen() {
               {freshness.refreshHint}
             </Text>
           </View>
+        ) : null}
+
+        {/* What changed since last refresh */}
+        {research?.change_summary ? (
+          <WhatChangedCard summary={research.change_summary} brand={brand} />
         ) : null}
 
         {marketData ? (
