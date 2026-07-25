@@ -152,8 +152,47 @@ type PerplexityResult = {
   sources: AfaqiSource[]
 }
 
-const CACHE_SELECT =
+const CACHE_SELECT_FULL =
   'slug, company_name, ticker, items, fetched_at, company_narrative, media_narrative, factual_gaps, financial_highlights, change_summary, research_version'
+
+const CACHE_SELECT_LEGACY =
+  'slug, company_name, ticker, items, fetched_at, company_narrative, media_narrative, factual_gaps, financial_highlights'
+
+/** Prefer full select; fall back if snapshots migration not applied yet. */
+let preferLegacyCacheSelect = false
+
+function isMissingSnapshotColumnError(error: { message?: string; code?: string } | null | undefined): boolean {
+  if (!error) return false
+  if ((error as { code?: string }).code === '42703') return true
+  const msg = error.message ?? ''
+  return /change_summary|research_version|previous_fetched_at|does not exist/i.test(msg)
+}
+
+async function selectResearchCache(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  opts: { slug?: string; slugs?: string[] },
+): Promise<CacheRow[]> {
+  const select = preferLegacyCacheSelect ? CACHE_SELECT_LEGACY : CACHE_SELECT_FULL
+  let q = db.from('company_research_cache').select(select)
+  if (opts.slug) q = q.eq('slug', opts.slug)
+  if (opts.slugs?.length) q = q.in('slug', opts.slugs)
+
+  const first = opts.slug ? await q.maybeSingle() : await q
+  if (first.error && !preferLegacyCacheSelect && isMissingSnapshotColumnError(first.error)) {
+    preferLegacyCacheSelect = true
+    let legacy = db.from('company_research_cache').select(CACHE_SELECT_LEGACY)
+    if (opts.slug) legacy = legacy.eq('slug', opts.slug)
+    if (opts.slugs?.length) legacy = legacy.in('slug', opts.slugs)
+    const second = opts.slug ? await legacy.maybeSingle() : await legacy
+    if (second.error) throw second.error
+    if (opts.slug) return second.data ? [second.data as CacheRow] : []
+    return (second.data ?? []) as CacheRow[]
+  }
+  if (first.error) throw first.error
+  if (opts.slug) return first.data ? [first.data as CacheRow] : []
+  return (first.data ?? []) as CacheRow[]
+}
 
 const PORTFOLIO_SLUG = '__portfolio__'
 
@@ -832,31 +871,24 @@ Deno.serve(async (req: Request) => {
       .filter((s: unknown): s is string => typeof s === 'string' && s.length > 0)
       .slice(0, 8)
 
-    const { data: cacheRows } = slugs.length > 0
-      ? await db
-        .from('company_research_cache')
-        .select(CACHE_SELECT)
-        .in('slug', slugs)
-      : { data: [] }
+    const cacheRows =
+      slugs.length > 0 ? await selectResearchCache(db, { slugs }) : []
 
     primaryContext = buildPortfolioContext(
       typeof digestRow?.digest_text === 'string' ? digestRow.digest_text : '',
-      (cacheRows ?? []) as CacheRow[],
+      cacheRows,
     )
     primaryCompanyName = 'User Portfolio'
   } else {
     // Company mode
-    const { data: cacheRow } = await db
-      .from('company_research_cache')
-      .select(CACHE_SELECT)
-      .eq('slug', slug)
-      .maybeSingle()
+    const cacheRows = await selectResearchCache(db, { slug })
+    const cacheRow = cacheRows[0] ?? null
 
     primaryContext = cacheRow
-      ? buildResearchContext(cacheRow as CacheRow)
+      ? buildResearchContext(cacheRow)
       : `No research context found for "${slug}". Tell the user to run research on this company first from the company profile.`
 
-    primaryCompanyName = (cacheRow as CacheRow | null)?.company_name ?? slug
+    primaryCompanyName = cacheRow?.company_name ?? slug
   }
 
   // 2. Load conversation history (last 20 turns, ascending order)

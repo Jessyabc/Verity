@@ -149,15 +149,46 @@ function rowFromCache(data: Record<string, unknown>): CompanyResearchRow {
   }
 }
 
-const CACHE_SELECT =
+const CACHE_SELECT_FULL =
   'slug, company_name, ticker, items, synthesis, company_narrative, media_narrative, factual_gaps, financial_highlights, fetched_at, error, model, change_summary, research_version, previous_fetched_at'
 
+const CACHE_SELECT_LEGACY =
+  'slug, company_name, ticker, items, synthesis, company_narrative, media_narrative, factual_gaps, financial_highlights, fetched_at, error, model'
+
+/** Once true, skip requesting snapshot columns until the app restarts (migration applied). */
+let preferLegacyCacheSelect = false
+
+function isMissingSnapshotColumnError(error: { message?: string; code?: string } | null): boolean {
+  if (!error) return false
+  if (error.code === '42703') return true
+  const msg = error.message ?? ''
+  return /change_summary|research_version|previous_fetched_at|does not exist/i.test(msg)
+}
+
+async function selectCache(opts: {
+  slugs?: string[]
+  slug?: string
+  maybeSingle?: boolean
+}): Promise<{ data: unknown; error: { message?: string; code?: string } | null }> {
+  const select = preferLegacyCacheSelect ? CACHE_SELECT_LEGACY : CACHE_SELECT_FULL
+  let q = supabase.from('company_research_cache').select(select)
+  if (opts.slug) q = q.eq('slug', opts.slug)
+  if (opts.slugs) q = q.in('slug', opts.slugs).order('fetched_at', { ascending: false })
+
+  const first = opts.maybeSingle ? await q.maybeSingle() : await q
+  if (!first.error || preferLegacyCacheSelect || !isMissingSnapshotColumnError(first.error)) {
+    return first
+  }
+
+  preferLegacyCacheSelect = true
+  let legacy = supabase.from('company_research_cache').select(CACHE_SELECT_LEGACY)
+  if (opts.slug) legacy = legacy.eq('slug', opts.slug)
+  if (opts.slugs) legacy = legacy.in('slug', opts.slugs).order('fetched_at', { ascending: false })
+  return opts.maybeSingle ? await legacy.maybeSingle() : await legacy
+}
+
 export async function fetchResearchCacheRow(slug: string): Promise<CompanyResearchRow | null> {
-  const { data, error } = await supabase
-    .from('company_research_cache')
-    .select(CACHE_SELECT)
-    .eq('slug', slug)
-    .maybeSingle()
+  const { data, error } = await selectCache({ slug, maybeSingle: true })
   if (error) throw error
   if (!data) return null
   return rowFromCache(data as Record<string, unknown>)
@@ -166,11 +197,7 @@ export async function fetchResearchCacheRow(slug: string): Promise<CompanyResear
 /** Batched cache read for home / watchlist feeds. */
 export async function fetchResearchCacheRowsForSlugs(slugs: string[]): Promise<CompanyResearchRow[]> {
   if (slugs.length === 0) return []
-  const { data, error } = await supabase
-    .from('company_research_cache')
-    .select(CACHE_SELECT)
-    .in('slug', slugs)
-    .order('fetched_at', { ascending: false })
+  const { data, error } = await selectCache({ slugs })
   if (error) throw error
   return ((data ?? []) as Record<string, unknown>[]).map(rowFromCache)
 }
