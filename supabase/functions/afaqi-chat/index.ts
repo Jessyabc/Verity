@@ -926,18 +926,15 @@ Deno.serve(async (req: Request) => {
       if (foundCompany) {
         if (foundCompany.slug === slug) continue
 
-        const { data: otherCache } = await db
-          .from('company_research_cache')
-          .select(CACHE_SELECT)
-          .eq('slug', foundCompany.slug)
-          .maybeSingle()
+        const peerRows = await selectResearchCache(db, { slug: foundCompany.slug })
+        const otherCache = peerRows[0] ?? null
 
         if (otherCache) {
           // Prefer cache even if slightly stale for structured compare; label freshness in block.
-          const fresh = isCacheFresh((otherCache as CacheRow).fetched_at)
-          const otherCtx = buildResearchContext(otherCache as CacheRow)
+          const fresh = isCacheFresh(otherCache.fetched_at)
+          const otherCtx = buildResearchContext(otherCache)
           contextBlocks.push(
-            `--- COMPARE / PEER CARD: ${(otherCache as CacheRow).company_name}${(otherCache as CacheRow).ticker ? ` (${(otherCache as CacheRow).ticker})` : ''} (${fresh ? 'Verity research cache' : 'Verity research cache — may be stale'}) ---\n${otherCtx}`,
+            `--- COMPARE / PEER CARD: ${otherCache.company_name}${otherCache.ticker ? ` (${otherCache.ticker})` : ''} (${fresh ? 'Verity research cache' : 'Verity research cache — may be stale'}) ---\n${otherCtx}`,
           )
           extraContextSlugs.push(foundCompany.slug)
         } else if (perplexityKey) {
