@@ -40,6 +40,20 @@ export type FinancialHighlights = {
   metrics: FinancialMetric[]
 }
 
+export type ResearchChangeSummary = {
+  generated_at: string
+  previous_fetched_at: string | null
+  research_version: number
+  bullets: string[]
+  sources_added: number
+  sources_removed: number
+  gaps_added: number
+  gaps_removed: number
+  metrics_changed: Array<{ label: string; from: string; to: string }>
+  company_narrative_changed: boolean
+  media_narrative_changed: boolean
+}
+
 export type CompanyResearchRow = {
   slug: string
   company_name: string
@@ -53,6 +67,9 @@ export type CompanyResearchRow = {
   fetched_at: string
   error: string | null
   model: string | null
+  change_summary: ResearchChangeSummary | null
+  research_version: number
+  previous_fetched_at: string | null
 }
 
 function parseFinancialHighlights(raw: unknown): FinancialHighlights | null {
@@ -76,6 +93,40 @@ function parseFinancialHighlights(raw: unknown): FinancialHighlights | null {
   return { period, period_end, metrics }
 }
 
+function parseChangeSummary(raw: unknown): ResearchChangeSummary | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const obj = raw as Record<string, unknown>
+  const bullets = Array.isArray(obj.bullets)
+    ? obj.bullets.filter((b): b is string => typeof b === 'string' && b.trim().length > 0)
+    : []
+  if (bullets.length === 0) return null
+  const metrics_changed: ResearchChangeSummary['metrics_changed'] = []
+  if (Array.isArray(obj.metrics_changed)) {
+    for (const m of obj.metrics_changed) {
+      if (!m || typeof m !== 'object') continue
+      const mo = m as Record<string, unknown>
+      const label = typeof mo.label === 'string' ? mo.label.trim() : ''
+      const from = typeof mo.from === 'string' ? mo.from.trim() : ''
+      const to = typeof mo.to === 'string' ? mo.to.trim() : ''
+      if (label && from && to) metrics_changed.push({ label, from, to })
+    }
+  }
+  return {
+    generated_at: typeof obj.generated_at === 'string' ? obj.generated_at : '',
+    previous_fetched_at:
+      typeof obj.previous_fetched_at === 'string' ? obj.previous_fetched_at : null,
+    research_version: typeof obj.research_version === 'number' ? obj.research_version : 0,
+    bullets,
+    sources_added: typeof obj.sources_added === 'number' ? obj.sources_added : 0,
+    sources_removed: typeof obj.sources_removed === 'number' ? obj.sources_removed : 0,
+    gaps_added: typeof obj.gaps_added === 'number' ? obj.gaps_added : 0,
+    gaps_removed: typeof obj.gaps_removed === 'number' ? obj.gaps_removed : 0,
+    metrics_changed,
+    company_narrative_changed: Boolean(obj.company_narrative_changed),
+    media_narrative_changed: Boolean(obj.media_narrative_changed),
+  }
+}
+
 function rowFromCache(data: Record<string, unknown>): CompanyResearchRow {
   const items = Array.isArray(data.items) ? (data.items as ResearchNewsItem[]) : []
   return {
@@ -91,11 +142,15 @@ function rowFromCache(data: Record<string, unknown>): CompanyResearchRow {
     fetched_at: data.fetched_at as string,
     error: (data.error as string | null) ?? null,
     model: (data.model as string | null) ?? null,
+    change_summary: parseChangeSummary(data.change_summary),
+    research_version: typeof data.research_version === 'number' ? data.research_version : 0,
+    previous_fetched_at:
+      typeof data.previous_fetched_at === 'string' ? data.previous_fetched_at : null,
   }
 }
 
 const CACHE_SELECT =
-  'slug, company_name, ticker, items, synthesis, company_narrative, media_narrative, factual_gaps, financial_highlights, fetched_at, error, model'
+  'slug, company_name, ticker, items, synthesis, company_narrative, media_narrative, factual_gaps, financial_highlights, fetched_at, error, model, change_summary, research_version, previous_fetched_at'
 
 export async function fetchResearchCacheRow(slug: string): Promise<CompanyResearchRow | null> {
   const { data, error } = await supabase

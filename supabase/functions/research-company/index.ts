@@ -14,6 +14,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
 import { corsHeaders } from '../_shared/cors.ts'
 import { requireSession } from '../_shared/requireSession.ts'
+import {
+  buildChangeSummary,
+  buildSnapshotPayload,
+  type ChangeSummary,
+} from '../_shared/researchChangeSummary.ts'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -640,7 +645,43 @@ Deno.serve(async (req) => {
     const reconciledItems = applySourceReconciliation(mergedItems, officialRoots)
     const items = rankResearchItems(reconciledItems)
 
-    // ── Persist to DB ─────────────────────────────────────────────────────────
+    const fetchedAt = new Date().toISOString()
+
+    // ── Load prior live row for snapshot + change_summary ─────────────────────
+    const { data: priorRow } = await supabase
+      .from('company_research_cache')
+      .select(
+        'slug, company_name, ticker, items, company_narrative, media_narrative, factual_gaps, financial_highlights, fetched_at, research_version, model, change_summary',
+      )
+      .eq('slug', slug)
+      .maybeSingle()
+
+    const research_version =
+      (typeof priorRow?.research_version === 'number' ? priorRow.research_version : 0) + 1
+
+    const change_summary: ChangeSummary | null = priorRow
+      ? buildChangeSummary(
+          {
+            company_narrative: priorRow.company_narrative,
+            media_narrative: priorRow.media_narrative,
+            factual_gaps: priorRow.factual_gaps,
+            financial_highlights: priorRow.financial_highlights,
+            items: priorRow.items,
+            fetched_at: priorRow.fetched_at,
+          },
+          {
+            company_narrative: company_narrative ?? null,
+            media_narrative: media_narrative ?? null,
+            factual_gaps: factual_gaps ?? [],
+            financial_highlights: financial_highlights ?? null,
+            items,
+            fetched_at: fetchedAt,
+          },
+          research_version,
+        )
+      : null
+
+    // ── Persist live cache ────────────────────────────────────────────────────
     const { error: upErr } = await supabase.from('company_research_cache').upsert(
       {
         slug,
@@ -652,14 +693,58 @@ Deno.serve(async (req) => {
         media_narrative: media_narrative ?? null,
         factual_gaps: factual_gaps ?? [],
         financial_highlights: financial_highlights ?? null,
-        fetched_at: new Date().toISOString(),
+        fetched_at: fetchedAt,
         error: null,
         model,
+        research_version,
+        previous_fetched_at: priorRow?.fetched_at ?? null,
+        change_summary,
       },
       { onConflict: 'slug' },
     )
 
     if (upErr) throw upErr
+
+    // ── Append snapshot (best-effort; live cache already succeeded) ───────────
+    try {
+      await supabase.from('company_research_snapshots').upsert(
+        {
+          slug,
+          research_version,
+          fetched_at: fetchedAt,
+          model,
+          payload: buildSnapshotPayload({
+            company_name: companyName,
+            ticker,
+            company_narrative: company_narrative ?? null,
+            media_narrative: media_narrative ?? null,
+            factual_gaps: factual_gaps ?? [],
+            financial_highlights: financial_highlights ?? null,
+            items,
+          }),
+          change_summary,
+        },
+        { onConflict: 'slug,research_version' },
+      )
+
+      // Keep last 12 snapshots per slug
+      const { data: oldRows } = await supabase
+        .from('company_research_snapshots')
+        .select('id')
+        .eq('slug', slug)
+        .order('fetched_at', { ascending: false })
+        .range(12, 100)
+
+      const oldIds = (oldRows ?? []).map((r: { id: string }) => r.id).filter(Boolean)
+      if (oldIds.length > 0) {
+        await supabase.from('company_research_snapshots').delete().in('id', oldIds)
+      }
+    } catch (snapErr) {
+      console.error(
+        'Snapshot write failed:',
+        snapErr instanceof Error ? snapErr.message : String(snapErr),
+      )
+    }
 
     return new Response(
       JSON.stringify({
@@ -669,6 +754,8 @@ Deno.serve(async (req) => {
         media_narrative,
         factual_gaps,
         financial_highlights,
+        change_summary,
+        research_version,
         model,
         count: items.length,
       }),

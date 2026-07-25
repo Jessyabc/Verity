@@ -96,6 +96,11 @@ const COMPANY_STARTER_CHIPS: StarterChip[] = [
     prompt: 'What are the factual gaps in the research card, and why do they matter?',
   },
   {
+    label: 'Changed',
+    prompt:
+      'What changed since the previous research refresh? Use the WHAT CHANGED block on the research card. Summarize source, gap, metric, and narrative deltas. Do not invent changes that are not listed.',
+  },
+  {
     label: 'Theme',
     prompt:
       'What sector or technology theme matters most for this company right now, and how does the research card connect to it? Separate confirmed links from uncertain ones.',
