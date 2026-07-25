@@ -648,26 +648,60 @@ Deno.serve(async (req) => {
     const fetchedAt = new Date().toISOString()
 
     // ── Load prior live row for snapshot + change_summary ─────────────────────
-    const { data: priorRow } = await supabase
-      .from('company_research_cache')
-      .select(
-        'slug, company_name, ticker, items, company_narrative, media_narrative, factual_gaps, financial_highlights, fetched_at, research_version, model, change_summary',
-      )
-      .eq('slug', slug)
-      .maybeSingle()
+    // Prefer the snapshots schema; if migration not applied yet, fall back so Refresh
+    // still succeeds (what-changed stays unavailable until SQL is applied).
+    const PRIOR_SELECT_FULL =
+      'slug, company_name, ticker, items, company_narrative, media_narrative, factual_gaps, financial_highlights, fetched_at, research_version, model, change_summary'
+    const PRIOR_SELECT_LEGACY =
+      'slug, company_name, ticker, items, company_narrative, media_narrative, factual_gaps, financial_highlights, fetched_at, model'
+
+    let priorRow: Record<string, unknown> | null = null
+    let snapshotsSchemaReady = true
+
+    {
+      const full = await supabase
+        .from('company_research_cache')
+        .select(PRIOR_SELECT_FULL)
+        .eq('slug', slug)
+        .maybeSingle()
+
+      if (full.error) {
+        const msg = full.error.message ?? ''
+        const missingCol =
+          /research_version|change_summary|previous_fetched_at|does not exist|schema cache/i.test(msg)
+        if (!missingCol) throw full.error
+
+        snapshotsSchemaReady = false
+        console.warn(
+          'Snapshots schema missing on company_research_cache — apply migration 20260725141500_company_research_snapshots.sql. Falling back to legacy upsert.',
+          msg,
+        )
+        const legacy = await supabase
+          .from('company_research_cache')
+          .select(PRIOR_SELECT_LEGACY)
+          .eq('slug', slug)
+          .maybeSingle()
+        if (legacy.error) throw legacy.error
+        priorRow = (legacy.data as Record<string, unknown> | null) ?? null
+      } else {
+        priorRow = (full.data as Record<string, unknown> | null) ?? null
+      }
+    }
 
     const research_version =
       (typeof priorRow?.research_version === 'number' ? priorRow.research_version : 0) + 1
 
-    const change_summary: ChangeSummary | null = priorRow
-      ? buildChangeSummary(
+    const change_summary: ChangeSummary | null = (() => {
+      if (!priorRow || !snapshotsSchemaReady) return null
+      try {
+        return buildChangeSummary(
           {
-            company_narrative: priorRow.company_narrative,
-            media_narrative: priorRow.media_narrative,
-            factual_gaps: priorRow.factual_gaps,
-            financial_highlights: priorRow.financial_highlights,
-            items: priorRow.items,
-            fetched_at: priorRow.fetched_at,
+            company_narrative: priorRow.company_narrative as string | null,
+            media_narrative: priorRow.media_narrative as string | null,
+            factual_gaps: priorRow.factual_gaps as never,
+            financial_highlights: priorRow.financial_highlights as never,
+            items: priorRow.items as never,
+            fetched_at: priorRow.fetched_at as string | null,
           },
           {
             company_narrative: company_narrative ?? null,
@@ -679,71 +713,104 @@ Deno.serve(async (req) => {
           },
           research_version,
         )
-      : null
+      } catch (diffErr) {
+        console.error(
+          'change_summary build failed:',
+          diffErr instanceof Error ? diffErr.message : String(diffErr),
+        )
+        return null
+      }
+    })()
+
+    const baseRow = {
+      slug,
+      company_name: companyName,
+      ticker,
+      items,
+      synthesis: null,
+      company_narrative: company_narrative ?? null,
+      media_narrative: media_narrative ?? null,
+      factual_gaps: factual_gaps ?? [],
+      financial_highlights: financial_highlights ?? null,
+      fetched_at: fetchedAt,
+      error: null,
+      model,
+    }
 
     // ── Persist live cache ────────────────────────────────────────────────────
-    const { error: upErr } = await supabase.from('company_research_cache').upsert(
-      {
-        slug,
-        company_name: companyName,
-        ticker,
-        items,
-        synthesis: null,
-        company_narrative: company_narrative ?? null,
-        media_narrative: media_narrative ?? null,
-        factual_gaps: factual_gaps ?? [],
-        financial_highlights: financial_highlights ?? null,
-        fetched_at: fetchedAt,
-        error: null,
-        model,
-        research_version,
-        previous_fetched_at: priorRow?.fetched_at ?? null,
-        change_summary,
-      },
-      { onConflict: 'slug' },
-    )
-
-    if (upErr) throw upErr
-
-    // ── Append snapshot (best-effort; live cache already succeeded) ───────────
-    try {
-      await supabase.from('company_research_snapshots').upsert(
+    if (snapshotsSchemaReady) {
+      const { error: upErr } = await supabase.from('company_research_cache').upsert(
         {
-          slug,
+          ...baseRow,
           research_version,
-          fetched_at: fetchedAt,
-          model,
-          payload: buildSnapshotPayload({
-            company_name: companyName,
-            ticker,
-            company_narrative: company_narrative ?? null,
-            media_narrative: media_narrative ?? null,
-            factual_gaps: factual_gaps ?? [],
-            financial_highlights: financial_highlights ?? null,
-            items,
-          }),
+          previous_fetched_at: (priorRow?.fetched_at as string | undefined) ?? null,
           change_summary,
         },
-        { onConflict: 'slug,research_version' },
+        { onConflict: 'slug' },
       )
 
-      // Keep last 12 snapshots per slug
-      const { data: oldRows } = await supabase
-        .from('company_research_snapshots')
-        .select('id')
-        .eq('slug', slug)
-        .order('fetched_at', { ascending: false })
-        .range(12, 100)
+      if (upErr) {
+        const msg = upErr.message ?? ''
+        const missingCol =
+          /research_version|change_summary|previous_fetched_at|does not exist|schema cache/i.test(msg)
+        if (!missingCol) throw upErr
 
-      const oldIds = (oldRows ?? []).map((r: { id: string }) => r.id).filter(Boolean)
-      if (oldIds.length > 0) {
-        await supabase.from('company_research_snapshots').delete().in('id', oldIds)
+        snapshotsSchemaReady = false
+        console.warn('Snapshots columns rejected on upsert — legacy fallback.', msg)
+        const { error: legacyUpErr } = await supabase
+          .from('company_research_cache')
+          .upsert(baseRow, { onConflict: 'slug' })
+        if (legacyUpErr) throw legacyUpErr
       }
-    } catch (snapErr) {
-      console.error(
-        'Snapshot write failed:',
-        snapErr instanceof Error ? snapErr.message : String(snapErr),
-      )
+    } else {
+      const { error: upErr } = await supabase
+        .from('company_research_cache')
+        .upsert(baseRow, { onConflict: 'slug' })
+      if (upErr) throw upErr
+    }
+
+    // ── Append snapshot (best-effort; live cache already succeeded) ───────────
+    if (snapshotsSchemaReady) {
+      try {
+        const { error: snapErr } = await supabase.from('company_research_snapshots').upsert(
+          {
+            slug,
+            research_version,
+            fetched_at: fetchedAt,
+            model,
+            payload: buildSnapshotPayload({
+              company_name: companyName,
+              ticker,
+              company_narrative: company_narrative ?? null,
+              media_narrative: media_narrative ?? null,
+              factual_gaps: factual_gaps ?? [],
+              financial_highlights: financial_highlights ?? null,
+              items,
+            }),
+            change_summary,
+          },
+          { onConflict: 'slug,research_version' },
+        )
+        if (snapErr) throw snapErr
+
+        // Keep last 12 snapshots per slug
+        const { data: oldRows } = await supabase
+          .from('company_research_snapshots')
+          .select('id')
+          .eq('slug', slug)
+          .order('fetched_at', { ascending: false })
+          .range(12, 100)
+
+        const oldIds = (oldRows ?? []).map((r: { id: string }) => r.id).filter(Boolean)
+        if (oldIds.length > 0) {
+          await supabase.from('company_research_snapshots').delete().in('id', oldIds)
+        }
+      } catch (snapErr) {
+        console.error(
+          'Snapshot write failed:',
+          snapErr instanceof Error ? snapErr.message : String(snapErr),
+        )
+      }
     }
 
     return new Response(
@@ -754,10 +821,11 @@ Deno.serve(async (req) => {
         media_narrative,
         factual_gaps,
         financial_highlights,
-        change_summary,
-        research_version,
+        change_summary: snapshotsSchemaReady ? change_summary : null,
+        research_version: snapshotsSchemaReady ? research_version : null,
         model,
         count: items.length,
+        snapshots_schema_ready: snapshotsSchemaReady,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
