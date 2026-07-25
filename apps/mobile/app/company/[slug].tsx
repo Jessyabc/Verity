@@ -598,7 +598,7 @@ export default function CompanyScreen() {
   }
 
   /** Skip the conversation list — open latest thread or create one. */
-  const openChatDirectly = useCallback(async (opts?: { fromSwipe?: boolean }) => {
+  const openChatDirectly = useCallback(async () => {
     if (!user || !slug || openingChatRef.current) {
       throw new Error('Chat unavailable')
     }
@@ -610,14 +610,7 @@ export default function CompanyScreen() {
         (await resolveConversationIdForSlug(user.id, slug))
       prefetchedConversationIdRef.current = id
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-      router.push({
-        pathname: '/chat/[slug]/[conversationId]',
-        params: {
-          slug,
-          conversationId: id,
-          ...(opts?.fromSwipe ? { noAnimate: '1' } : {}),
-        },
-      })
+      router.push(`/chat/${slug}/${id}`)
     } catch (e) {
       setError(formatUnknownError(e))
       throw e
@@ -666,7 +659,7 @@ export default function CompanyScreen() {
     if (!ready) {
       throw new Error('No research yet')
     }
-    await openChatDirectly({ fromSwipe: true })
+    await openChatDirectly()
   }, [research, researchBusy, openChatDirectly])
 
   // Yield shell pan so left-half back + right-half chat reveal can own gestures.
@@ -778,8 +771,6 @@ export default function CompanyScreen() {
   return (
     <CompanyChatReveal
       enabled={hasResearch && Boolean(user)}
-      brand={brand}
-      companyName={company.name}
       onOpenChat={openChatFromSwipe}
     >
     <View style={[styles.container, { backgroundColor: brand.navy }]}>
