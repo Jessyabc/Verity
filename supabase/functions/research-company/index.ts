@@ -691,28 +691,36 @@ Deno.serve(async (req) => {
     const research_version =
       (typeof priorRow?.research_version === 'number' ? priorRow.research_version : 0) + 1
 
-    const change_summary: ChangeSummary | null =
-      priorRow && snapshotsSchemaReady
-        ? buildChangeSummary(
-            {
-              company_narrative: priorRow.company_narrative as string | null,
-              media_narrative: priorRow.media_narrative as string | null,
-              factual_gaps: priorRow.factual_gaps as never,
-              financial_highlights: priorRow.financial_highlights as never,
-              items: priorRow.items as never,
-              fetched_at: priorRow.fetched_at as string | null,
-            },
-            {
-              company_narrative: company_narrative ?? null,
-              media_narrative: media_narrative ?? null,
-              factual_gaps: factual_gaps ?? [],
-              financial_highlights: financial_highlights ?? null,
-              items,
-              fetched_at: fetchedAt,
-            },
-            research_version,
-          )
-        : null
+    const change_summary: ChangeSummary | null = (() => {
+      if (!priorRow || !snapshotsSchemaReady) return null
+      try {
+        return buildChangeSummary(
+          {
+            company_narrative: priorRow.company_narrative as string | null,
+            media_narrative: priorRow.media_narrative as string | null,
+            factual_gaps: priorRow.factual_gaps as never,
+            financial_highlights: priorRow.financial_highlights as never,
+            items: priorRow.items as never,
+            fetched_at: priorRow.fetched_at as string | null,
+          },
+          {
+            company_narrative: company_narrative ?? null,
+            media_narrative: media_narrative ?? null,
+            factual_gaps: factual_gaps ?? [],
+            financial_highlights: financial_highlights ?? null,
+            items,
+            fetched_at: fetchedAt,
+          },
+          research_version,
+        )
+      } catch (diffErr) {
+        console.error(
+          'change_summary build failed:',
+          diffErr instanceof Error ? diffErr.message : String(diffErr),
+        )
+        return null
+      }
+    })()
 
     const baseRow = {
       slug,
