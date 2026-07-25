@@ -666,7 +666,8 @@ export default function CompanyScreen() {
     if (!ready) {
       throw new Error('No research yet')
     }
-    await openChatDirectly({ fromSwipe: true })
+    // Same destination as the CTA — real conversation route, normal push animation.
+    await openChatDirectly()
   }, [research, researchBusy, openChatDirectly])
 
   // Yield shell pan so left-half back + right-half chat reveal can own gestures.
@@ -778,8 +779,6 @@ export default function CompanyScreen() {
   return (
     <CompanyChatReveal
       enabled={hasResearch && Boolean(user)}
-      brand={brand}
-      companyName={company.name}
       onOpenChat={openChatFromSwipe}
     >
     <View style={[styles.container, { backgroundColor: brand.navy }]}>
