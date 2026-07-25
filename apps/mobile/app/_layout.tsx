@@ -128,17 +128,11 @@ function AuthAwareStack() {
         />
         <Stack.Screen
           name="chat/[slug]/[conversationId]"
-          options={({ route }) => ({
+          options={{
             headerShown: true,
             headerBackTitle: 'Conversations',
-            gestureEnabled: true,
-            fullScreenGestureEnabled: true,
-            // Interactive company → chat reveal already finished the push motion.
-            animation:
-              (route.params as { noAnimate?: string } | undefined)?.noAnimate === '1'
-                ? 'none'
-                : 'slide_from_right',
-          })}
+            ...stackScreenGesture,
+          }}
         />
         <Stack.Screen
           name="afaqi"
