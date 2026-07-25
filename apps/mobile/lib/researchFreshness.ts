@@ -110,6 +110,21 @@ export function getResearchConfidence(opts: {
   return depth >= 2 ? 'medium' : 'low'
 }
 
+/** 0–1 fill for the confidence meter UI. */
+export function confidenceMeterValue(c: ResearchConfidence): number {
+  if (c === 'high') return 0.92
+  if (c === 'medium') return 0.55
+  return 0.22
+}
+
+/** Fill color for the meter (low → amber, high → teal). */
+export function confidenceMeterColor(c: ResearchConfidence): string {
+  if (c === 'high') return '#2FB4B0'
+  if (c === 'medium') return '#D97706'
+  return '#B45309'
+}
+
+/** Accessibility / tooltip wording only — prefer the meter in UI. */
 export function confidenceLabel(c: ResearchConfidence): string {
   if (c === 'high') return 'High confidence'
   if (c === 'medium') return 'Medium confidence'
