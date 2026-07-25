@@ -35,10 +35,10 @@ import { fetchCompanyBundleBySlug } from '@/lib/companyBundle'
 import type { CompanyRow } from '@/lib/companyBySlug'
 import { formatAgo, formatResearchUpdated, formatUnknownError } from '@/lib/format'
 import {
-  confidenceLabel,
   getResearchConfidence,
   getResearchFreshness,
 } from '@/lib/researchFreshness'
+import { ConfidenceMeter } from '@/components/ConfidenceMeter'
 import { itemIsCompanySource, itemIsMediaSource } from '@/lib/headlineGrouping'
 import {
   deleteWatchlistSlug,
@@ -765,12 +765,19 @@ export default function CompanyScreen() {
         {/* 1 — Header */}
         <Text style={[styles.headerLine, { color: brand.onNavy }]}>{headerLine}</Text>
 
-        {/* 2 — Updated + Refresh */}
+        {/* 2 — Updated + confidence meter + Refresh */}
         <View style={styles.refreshRow}>
-          <Text style={[styles.updatedLine, { color: brand.onNavyMuted }]}>
-            {formatResearchUpdated(research?.fetched_at)}
-            {hasResearch ? ` · ${confidenceLabel(confidence)}` : ''}
-          </Text>
+          <View style={styles.updatedCol}>
+            <Text style={[styles.updatedLine, { color: brand.onNavyMuted }]}>
+              {formatResearchUpdated(research?.fetched_at)}
+            </Text>
+            {hasResearch ? (
+              <ConfidenceMeter
+                confidence={confidence}
+                trackColor="rgba(255,255,255,0.14)"
+              />
+            ) : null}
+          </View>
           <Pressable
             style={({ pressed }) => [
               styles.refreshBtn,
@@ -926,7 +933,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: space.sm,
   },
-  updatedLine: { fontFamily: font.regular, fontSize: 14, flex: 1, paddingRight: space.md },
+  updatedCol: {
+    flex: 1,
+    paddingRight: space.md,
+    justifyContent: 'center',
+  },
+  updatedLine: { fontFamily: font.regular, fontSize: 14 },
   refreshBtn: {
     borderRadius: radius.md,
     paddingHorizontal: space.xl,

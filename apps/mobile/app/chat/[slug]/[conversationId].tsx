@@ -31,11 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '@/contexts/AuthContext'
 import { useVerityPalette } from '@/hooks/useVerityPalette'
 import { fetchResearchCacheRow } from '@/lib/researchCache'
-import {
-  confidenceLabel,
-  getResearchConfidence,
-  getResearchFreshness,
-} from '@/lib/researchFreshness'
+import { getResearchFreshness } from '@/lib/researchFreshness'
 import { openUrl } from '@/lib/openUrl'
 import { supabase } from '@/lib/supabase'
 import { font, radius, space } from '@/constants/theme'
@@ -466,18 +462,12 @@ export default function ChatScreen() {
               cache?.company_narrative?.trim() || cache?.media_narrative?.trim(),
             )
             const freshness = getResearchFreshness(cache?.fetched_at)
-            const confidence = getResearchConfidence({
-              fetchedAt: cache?.fetched_at,
-              hasNarratives,
-              hasFinancials: Boolean(cache?.financial_highlights?.metrics?.length),
-              hasGaps: Boolean(cache?.factual_gaps?.length),
-            })
 
             let welcome: string
             if (itemCount > 0 || hasNarratives) {
               welcome =
                 `I have the full research card loaded for ${compName} — narratives, financials, gaps, and sources ` +
-                `(${freshness.pillLabel.toLowerCase()}, ${confidenceLabel(confidence).toLowerCase()}).`
+                `(${freshness.pillLabel.toLowerCase()}).`
               if (freshness.refreshHint) welcome += `\n\n${freshness.refreshHint}`
               welcome += '\n\nTap a starter below or ask anything.'
             } else {
