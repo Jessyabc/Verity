@@ -97,12 +97,15 @@ npm run import:sec-tickers # SEC_USER_AGENT + migration 20260407140000 — US SE
 2. **Monitor** — `npm run monitor:once` checks **pilot JSON** and **every other** `company_sources` row (deduped against pilot slug+source_key). GitHub: [`monitor-schedule.yml`](.github/workflows/monitor-schedule.yml) with `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`.
 3. **Research** — Edge `research-company` + Dashboard/profile **Refresh**; cron: [`research-weekdays.yml`](.github/workflows/research-weekdays.yml) needs `PERPLEXITY_API_KEY` (+ Supabase secrets).
 4. **Enrich** — `npm run enrich:once` or **Actions → Enrich documents once** with `OPENAI_API_KEY`. Optional weekly schedule: see comments in [`enrich-once.yml`](.github/workflows/enrich-once.yml).
+5. **Tickers** — `npm run import:sec-tickers` upserts the full SEC EDGAR company directory (~10k issuers) into `companies`. GitHub: [`update-tickers.yml`](.github/workflows/update-tickers.yml) runs weekly (Mondays `05:15 UTC`) and on demand, keeping ticker coverage current without manual runs; needs `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` + `SEC_USER_AGENT`.
 
 ## Deploy
 
 See Phase 1; set `VITE_SUPABASE_*` in the host’s env for production auth.
 
 **Scheduled monitoring:** In the GitHub repo → **Settings → Secrets and variables → Actions**, add `SUPABASE_URL` (project API URL, same as `VITE_SUPABASE_URL`) and `SUPABASE_SERVICE_ROLE_KEY`. The workflow [`monitor-schedule.yml`](.github/workflows/monitor-schedule.yml) runs every six hours and on demand (**Actions → Monitor once → Run workflow**).
+
+**Scheduled ticker updates:** add `SEC_USER_AGENT` (e.g. `VerityMonitor/1.0 (you@example.com)`, required by SEC fair-access policy — see `.env.example`) alongside the Supabase secrets above. [`update-tickers.yml`](.github/workflows/update-tickers.yml) then keeps the `companies` ticker universe in sync with SEC EDGAR automatically (weekly + **Actions → Update tickers → Run workflow**).
 
 ## Next steps
 
@@ -111,3 +114,4 @@ See Phase 1; set `VITE_SUPABASE_*` in the host’s env for production auth.
 3. Deploy Edge Functions `research-company`, `admin-upsert-company`, and `watchlist-brief` (see Phase 5 above); set `PERPLEXITY_API_KEY`, `OPENAI_API_KEY` (for watchlist summary), `ADMIN_EMAIL`, `SUPABASE_ANON_KEY`, and service role secrets; add `VITE_ADMIN_EMAIL` (same as `ADMIN_EMAIL`) in Vercel for the Admin nav.
 4. Add `PERPLEXITY_API_KEY` to GitHub; apply `user_watchlist` migration so app + `WATCHLIST_FROM_DB` jobs see watchlist rows; enable [`research-weekdays.yml`](.github/workflows/research-weekdays.yml).
 5. Confirm GitHub secrets for [`monitor-schedule.yml`](.github/workflows/monitor-schedule.yml), [`research-weekdays.yml`](.github/workflows/research-weekdays.yml), and on-demand [`enrich-once.yml`](.github/workflows/enrich-once.yml).
+6. Add `SEC_USER_AGENT` to GitHub secrets so [`update-tickers.yml`](.github/workflows/update-tickers.yml) can run its weekly SEC ticker sync.
