@@ -1,0 +1,32 @@
+# Runs import:sec-tickers — upserts the full SEC EDGAR company_tickers.json feed
+# (~10k US-listed issuers, all exchanges) into public.companies so ticker coverage
+# stays current as SEC registers new issuers. Idempotent (upsert onConflict: slug).
+# Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SEC_USER_AGENT
+
+name: Update tickers
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 5 * * 1'
+
+jobs:
+  update-tickers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Import SEC tickers
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: npm run import:sec-tickers
