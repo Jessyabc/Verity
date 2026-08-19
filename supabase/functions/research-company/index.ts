@@ -243,6 +243,17 @@ function filterContaminatedMediaSources(
 
 // ─── Perplexity caller ────────────────────────────────────────────────────────
 
+/** Transport-level failure (timeout, network, HTTP error) — distinct from a malformed-content error, so retries can be handled differently. */
+class PerplexityCallError extends Error {
+  constructor(message: string, readonly kind: 'timeout' | 'network' | 'rate_limit' | 'http') {
+    super(message)
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function callPerplexity(
   apiKey: string,
   model: string,
@@ -250,7 +261,7 @@ async function callPerplexity(
   userMessage: string,
   opts?: { recencyFilter?: 'month' | 'week' | 'day'; timeoutMs?: number; temperature?: number },
 ): Promise<string> {
-  const timeoutMs = opts?.timeoutMs ?? 22_000
+  const timeoutMs = opts?.timeoutMs ?? 35_000
   const temperature = opts?.temperature ?? 0.2
 
   const body: Record<string, unknown> = {
@@ -278,13 +289,24 @@ async function callPerplexity(
       body: JSON.stringify(body),
       signal: controller.signal,
     })
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new PerplexityCallError(`Perplexity request timed out after ${timeoutMs}ms`, 'timeout')
+    }
+    throw new PerplexityCallError(
+      `Perplexity network error: ${err instanceof Error ? err.message : String(err)}`,
+      'network',
+    )
   } finally {
     clearTimeout(timeout)
   }
 
   if (!res.ok) {
     const errText = await res.text()
-    throw new Error(`Perplexity HTTP ${res.status}: ${errText.slice(0, 400)}`)
+    throw new PerplexityCallError(
+      `Perplexity HTTP ${res.status}: ${errText.slice(0, 400)}`,
+      res.status === 429 ? 'rate_limit' : 'http',
+    )
   }
 
   const pjson = (await res.json()) as {
@@ -324,7 +346,22 @@ async function callPerplexityJsonWithRepair(
   try {
     return await callPerplexityJsonOnce(apiKey, model, systemMessage, userMessage, opts)
   } catch (e) {
-    // One bounded "repair" retry: force JSON only + lower temperature.
+    if (e instanceof PerplexityCallError) {
+      // Transport failure (timeout / network / rate limit / HTTP error) — the content was
+      // never bad, so retrying with "your JSON was invalid" framing wouldn't help. Back off
+      // (longer for rate limits) and retry the original prompt with extra time budget.
+      const backoffMs = e.kind === 'rate_limit' ? 1500 : 500
+      await sleep(backoffMs)
+      const retryTimeoutMs = Math.min((opts.timeoutMs ?? 35_000) * 1.5, 60_000)
+      const content = await callPerplexity(apiKey, model, systemMessage, userMessage, {
+        recencyFilter: opts.recencyFilter,
+        timeoutMs: retryTimeoutMs,
+        temperature: 0.2,
+      })
+      return extractJsonObject(content)
+    }
+
+    // Malformed/non-JSON content: one bounded "repair" retry, forcing JSON only + lower temperature.
     const repairSystem =
       systemMessage +
       '\n\nYour previous response was invalid or not a single JSON object. ' +
@@ -561,7 +598,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceKey)
     const currentDate = new Date().toISOString().split('T')[0] // "YYYY-MM-DD"
     const ticker = body.ticker ?? null
-    const timeoutMs = typeof body.timeoutMs === 'number' && body.timeoutMs > 0 ? body.timeoutMs : 22_000
+    const timeoutMs = typeof body.timeoutMs === 'number' && body.timeoutMs > 0 ? body.timeoutMs : 35_000
     // Default to freshest for media; allow caller override for all search-backed calls.
     const recencyFilter: 'month' | 'week' | 'day' = body.recencyFilter ?? 'day'
 
@@ -617,6 +654,12 @@ Deno.serve(async (req) => {
     if (!financialObj && !companyObj && !mediaObj) {
       throw new Error('All 3 Perplexity calls failed')
     }
+
+    const failed_sections = [
+      !financialObj && 'financial_highlights',
+      !companyObj && 'company_narrative',
+      !mediaObj && 'media_narrative',
+    ].filter((s): s is string => Boolean(s))
 
     // ── Parse each response ───────────────────────────────────────────────────
     const financial_highlights = financialObj
@@ -826,6 +869,8 @@ Deno.serve(async (req) => {
         model,
         count: items.length,
         snapshots_schema_ready: snapshotsSchemaReady,
+        partial: failed_sections.length > 0,
+        failed_sections,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
