@@ -66,7 +66,7 @@ export function CompanyResearchSection({
   companyName: string
   ticker: string | null
 }) {
-  const { row, loading, refreshing, error, refresh } = useCompanyResearch(
+  const { row, loading, refreshing, error, partialWarning, refresh } = useCompanyResearch(
     slug,
     companyName,
     ticker,
@@ -151,6 +151,12 @@ export function CompanyResearchSection({
       {error ? (
         <p className="text-[15px] text-danger" role="alert">
           {error}
+        </p>
+      ) : null}
+
+      {!error && partialWarning ? (
+        <p className="text-[15px] text-amber-950" role="status">
+          {partialWarning}
         </p>
       ) : null}
 

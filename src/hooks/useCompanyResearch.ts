@@ -7,6 +7,12 @@ import {
   type CompanyResearchRow,
 } from '@/lib/supabase/researchQueries'
 
+const SECTION_LABELS: Record<string, string> = {
+  financial_highlights: 'financial highlights',
+  company_narrative: 'company narrative',
+  media_narrative: 'media coverage',
+}
+
 export function useCompanyResearch(
   slug: string | undefined,
   companyName: string,
@@ -16,6 +22,7 @@ export function useCompanyResearch(
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [partialWarning, setPartialWarning] = useState<string | null>(null)
 
   const load = useCallback(async (): Promise<CompanyResearchRow | null> => {
     if (!slug || !isSupabaseConfigured()) return null
@@ -37,11 +44,14 @@ export function useCompanyResearch(
     if (!slug || !isSupabaseConfigured()) return
     setRefreshing(true)
     setError(null)
+    setPartialWarning(null)
     try {
       const sb = getSupabaseBrowserClient()
       const { data, error: fnErr, response: fnResponse } = await sb.functions.invoke<{
         ok?: boolean
         error?: string
+        partial?: boolean
+        failed_sections?: string[]
       }>('research-company', {
         body: { slug, companyName, ticker },
       })
@@ -51,6 +61,10 @@ export function useCompanyResearch(
       }
       if (data && typeof data === 'object' && data.error) {
         throw new Error(String(data.error))
+      }
+      if (data?.partial && data.failed_sections?.length) {
+        const names = data.failed_sections.map((s) => SECTION_LABELS[s] ?? s).join(', ')
+        setPartialWarning(`Refreshed, but couldn't update: ${names}. Try again in a moment.`)
       }
       await load()
     } catch (e: unknown) {
@@ -79,5 +93,5 @@ export function useCompanyResearch(
     })
   }, [load])
 
-  return { row, loading, refreshing, error, refresh, reload: load }
+  return { row, loading, refreshing, error, partialWarning, refresh, reload: load }
 }
