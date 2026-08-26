@@ -457,6 +457,7 @@ export default function CompanyScreen() {
   const [researchBusy, setResearchBusy] = useState(false)
   const [onWatchlist, setOnWatchlist] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [partialWarning, setPartialWarning] = useState<string | null>(null)
   const [openingChat, setOpeningChat] = useState(false)
 
   const brand = useAdaptiveBrand()
@@ -474,6 +475,7 @@ export default function CompanyScreen() {
       return
     }
     setError(null)
+    setPartialWarning(null)
     try {
       const [bundle, r, wl] = await Promise.all([
         fetchCompanyBundleBySlug(slug),
@@ -496,7 +498,12 @@ export default function CompanyScreen() {
         autoRefreshFiredRef.current = true
         setResearchBusy(true)
         try {
-          await invokeResearchCompany(bundle.company.slug, bundle.company.name, bundle.company.ticker)
+          const refreshResult = await invokeResearchCompany(
+            bundle.company.slug,
+            bundle.company.name,
+            bundle.company.ticker,
+          )
+          setPartialWarning(refreshResult.partialWarning)
           setResearch(await fetchResearchCacheRow(bundle.company.slug))
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
         } catch (e) {
@@ -586,8 +593,10 @@ export default function CompanyScreen() {
     if (!company) return
     setResearchBusy(true)
     setError(null)
+    setPartialWarning(null)
     try {
-      await invokeResearchCompany(company.slug, company.name, company.ticker)
+      const refreshResult = await invokeResearchCompany(company.slug, company.name, company.ticker)
+      setPartialWarning(refreshResult.partialWarning)
       setResearch(await fetchResearchCacheRow(company.slug))
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
     } catch (e) {
@@ -635,8 +644,10 @@ export default function CompanyScreen() {
     void (async () => {
       setResearchBusy(true)
       setError(null)
+      setPartialWarning(null)
       try {
-        await invokeResearchCompany(company.slug, company.name, company.ticker)
+        const refreshResult = await invokeResearchCompany(company.slug, company.name, company.ticker)
+        setPartialWarning(refreshResult.partialWarning)
         setResearch(await fetchResearchCacheRow(company.slug))
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
       } catch (e) {
@@ -794,6 +805,12 @@ export default function CompanyScreen() {
             <Text style={[styles.bannerBody, { color: brand.onNavyMuted }]}>
               Pull to refresh or try again. {error}
             </Text>
+          </View>
+        ) : null}
+
+        {!error && partialWarning ? (
+          <View style={[styles.banner, { backgroundColor: 'rgba(217, 119, 6, 0.22)' }]}>
+            <Text style={[styles.bannerBody, { color: brand.onNavy }]}>{partialWarning}</Text>
           </View>
         ) : null}
 
