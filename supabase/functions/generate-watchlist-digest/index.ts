@@ -56,20 +56,40 @@ function buildCompanyContext(row: CacheRow): string {
   return `**${row.company_name}${ticker}**:\n${lines}`
 }
 
-function buildPrompt(companies: CacheRow[]): string {
+function buildPrompt(companies: CacheRow[], currentDate: string): string {
   const contexts = companies.map(buildCompanyContext).join('\n\n')
+  const tickers = companies.map((c) => c.ticker ?? c.company_name).join(', ')
 
   return (
-    `You are a cross-sector research analyst and scientist. The user tracks these companies:\n\n` +
-    `${contexts}\n\n` +
-    `Using your web search capability, synthesize a forward-looking digest that:\n` +
-    `1. Identifies the most important macro and industry movements relevant to this specific portfolio — name companies and explain why they stand out.\n` +
-    `2. Surfaces correlating scientific papers, preprints (arXiv), regulatory reports, or investor research that ground the analysis. Include DOI or arXiv IDs where available.\n` +
-    `3. Draws cross-portfolio patterns: technology convergences, sector rotations, supply chain signals, policy tailwinds or headwinds.\n\n` +
-    `Quality standards: be specific, cite credible sources, avoid vague commentary. The reader is a sophisticated investor.\n\n` +
+    `Today is ${currentDate}. Write this user's morning portfolio brief. They track: ${tickers}.\n\n` +
+    `Company context:\n${contexts}\n\n` +
+    `Using your web search capability, write ONE continuous piece of prose — not a report, ` +
+    `not bullet points, not section headers. It must read as a single throughline a person ` +
+    `can follow top to bottom in one sitting. Follow this shape exactly:\n\n` +
+    `1. OPEN with "Good morning" folded into a sentence that states the precise window this ` +
+    `brief covers — sessions elapsed since the last close, weekend gaps included by name ` +
+    `("since Friday's close, three sessions have passed"). Never a bare "Good morning" on its own.\n` +
+    `2. Identify the single broadest theme connecting the MOST holdings right now — macro, ` +
+    `sector, or cross-company — and state it before naming any one ticker. A ticker may only ` +
+    `appear once the theme it belongs to has been named.\n` +
+    `3. Cover 2-4 such themes total, ordered by how many holdings each touches or how much it ` +
+    `dominates this window — most connective/important first. Within each theme, move from the ` +
+    `broad claim, to which specific holdings it touches and why, to the one concrete fact or ` +
+    `figure that grounds it (an earnings line, a filing detail, a data print).\n` +
+    `4. Between every pair of themes, write one explicit bridge sentence that hands off from the ` +
+    `theme just covered to the next ("That same rate path is why...") — themes must never sit ` +
+    `side by side unconnected. If two themes are genuinely unrelated, say so plainly as the bridge ` +
+    `("Set against that top-down story, X is moving on entirely idiosyncratic news").\n` +
+    `5. CLOSE with one or two specific, concrete questions worth digging into further — each ` +
+    `pulled directly from something named earlier in the brief (a specific company, figure, or ` +
+    `event), never a generic "let me know if you have questions."\n\n` +
+    `Also surface correlating scientific papers, preprints (arXiv), regulatory reports, or investor ` +
+    `research that ground the analysis, with DOI or arXiv IDs where available.\n\n` +
+    `Quality standards: be specific, cite credible sources, avoid vague commentary and hedging. ` +
+    `The reader is a sophisticated investor who wants the actual throughline, not a disclaimer-laden summary.\n\n` +
     `Respond with ONLY valid JSON (no markdown fences, no prose outside the object):\n` +
     `{\n` +
-    `  "digest": "2-3 flowing paragraphs as a single string — rich, specific, grounded",\n` +
+    `  "digest": "the full brief as a single string, in flowing paragraphs, following the shape above",\n` +
     `  "sources": [\n` +
     `    {\n` +
     `      "title": "Full source title",\n` +
@@ -197,6 +217,7 @@ Deno.serve(async (req) => {
     }
 
     const model = Deno.env.get('PERPLEXITY_MODEL')?.trim() || 'sonar-pro'
+    const currentDate = new Date().toISOString().split('T')[0] // "YYYY-MM-DD"
 
     const res = await fetch('https://api.perplexity.ai/chat/completions', {
       method: 'POST',
@@ -211,13 +232,14 @@ Deno.serve(async (req) => {
           {
             role: 'system',
             content:
-              'You are a cross-sector analyst with access to web search. ' +
+              'You are a cross-sector analyst with access to web search, writing a morning portfolio ' +
+              'brief as one continuous piece of prose — never bullet points or section headers. ' +
               'Prioritize academic papers (arXiv, DOI), SEC filings, and reputable financial/scientific press. ' +
               'Return only valid JSON as instructed. No markdown outside the JSON object.',
           },
           {
             role: 'user',
-            content: buildPrompt(companies),
+            content: buildPrompt(companies, currentDate),
           },
         ],
       }),
