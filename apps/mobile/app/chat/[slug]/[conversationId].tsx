@@ -453,7 +453,9 @@ export default function ChatScreen() {
             if (digestText && freshness.needsRefresh) {
               welcome += `\n\nPortfolio brief: ${freshness.pillLabel.toLowerCase()}. Consider regenerating from the watchlist if you need a fresher synthesis.`
             }
-            setMessages([{ id: 'welcome', role: 'assistant', content: welcome }])
+            // Distinct id (not 'welcome') so the brief itself — the actual content here,
+            // unlike company mode's generic status blurb — gets the speak/copy tools.
+            setMessages([{ id: digestText ? 'welcome-brief' : 'welcome', role: 'assistant', content: welcome }])
           }
         } else {
           const cache = await fetchResearchCacheRow(slug)

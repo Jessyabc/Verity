@@ -845,14 +845,23 @@ Deno.serve(async (req: Request) => {
   // 1. Primary context
   let primaryContext = ''
   let primaryCompanyName = slug
+  // Sources generate-watchlist-digest already fetched via Perplexity — surfaced directly
+  // rather than relying on the model to re-cite them from prose (it has no URLs to cite).
+  let digestSources: AfaqiSource[] = []
 
   if (slug === PORTFOLIO_SLUG) {
     // Portfolio mode: use watchlist_digest + multiple company research caches
     const { data: digestRow } = await db
       .from('watchlist_digest')
-      .select('digest_text, slugs_snapshot, generated_at')
+      .select('digest_text, slugs_snapshot, generated_at, sources')
       .eq('user_id', user.id)
       .maybeSingle()
+
+    if (Array.isArray(digestRow?.sources)) {
+      digestSources = (digestRow.sources as Array<Record<string, unknown>>)
+        .filter((s) => typeof s?.title === 'string' && typeof s?.url === 'string')
+        .map((s) => ({ title: s.title as string, url: s.url as string }))
+    }
 
     const slugsFromDigest = Array.isArray(digestRow?.slugs_snapshot) ? digestRow!.slugs_snapshot : []
 
@@ -907,7 +916,7 @@ Deno.serve(async (req: Request) => {
 
   // 4. Gather additional context blocks (compare peers and/or live research)
   const contextBlocks: string[] = []
-  const extraSources: AfaqiSource[] = []
+  const extraSources: AfaqiSource[] = [...digestSources]
   const extraContextSlugs: string[] = []
 
   const shouldLoadPeers =
